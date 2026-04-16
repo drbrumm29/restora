@@ -1,4 +1,5 @@
 import { useState, useReducer, useCallback, useEffect, useRef } from "react";
+import { PATIENTS, loadPatientFiles } from "./src/patient-cases.js";
 
 // ═══════════════════════════════════════════════════════════════════
 // RESTORA — Complete Integrated App
@@ -508,7 +509,7 @@ function pickSystem(mode, files) {
   return {system:"mill",reason:"Mill Connect — fastest in-office workflow"};
 }
 
-function DesignBridge({ navigate }) {
+function DesignBridge({ navigate, activePatient, clearPatient }) {
   const [step, setStep] = useState("mode"); // mode | system | files | status
   const [mode, setMode] = useState(null);
   const [system, setSystem] = useState(null);
@@ -521,7 +522,45 @@ function DesignBridge({ navigate }) {
   const [teeth, setTeeth] = useState("8, 9");
   const [note, setNote] = useState("");
   const [job, setJob] = useState(null);
+  const [loadingPatient, setLoadingPatient] = useState(false);
   const timerRef = useRef(null);
+
+  // Auto-load patient files when coming from Dashboard
+  useEffect(() => {
+    if (!activePatient) return;
+    setLoadingPatient(true);
+    (async () => {
+      try {
+        const files = await loadPatientFiles(activePatient);
+        const pmode = activePatient.route;
+        const psystem = activePatient.system;
+        const modeSlots = MODES[pmode].slots.map(s=>({...s,uploaded:false,file:null}));
+        // Assign files to slots by matching slot id from patient file definition
+        activePatient.files.forEach((pf, i) => {
+          const file = files[i];
+          const slotIdx = modeSlots.findIndex(s => s.id === pf.slot && !s.uploaded);
+          if (slotIdx !== -1) {
+            modeSlots[slotIdx] = { ...modeSlots[slotIdx], uploaded:true, file };
+          } else {
+            // Find any empty slot that accepts this file type
+            const ext = pf.name.split('.').pop().toLowerCase();
+            const altIdx = modeSlots.findIndex(s => !s.uploaded && s.accept.includes(ext));
+            if (altIdx !== -1) modeSlots[altIdx] = { ...modeSlots[altIdx], uploaded:true, file };
+          }
+        });
+        setMode(pmode); setSystem(psystem); setSlots(modeSlots);
+        setTeeth(activePatient.teeth.replace(/#/g, ''));
+        setRestType(activePatient.subtype.toLowerCase().includes('veneer') ? 'veneer' :
+                    activePatient.subtype.toLowerCase().includes('implant') ? 'implant-crown' : 'crown');
+        setNote(activePatient.notes);
+        setDetection({ mode:pmode, system:psystem, modeReason:`Loaded from ${activePatient.name}`, sysReason:'Auto-routed', confidence:1.0 });
+        setStep("files");
+      } catch (e) {
+        console.error('Failed to load patient files:', e);
+      }
+      setLoadingPatient(false);
+    })();
+  }, [activePatient]);
 
   const restOpts = mode==="implant"?["implant-crown","implant-bridge","implant-bar","full-arch-zirconia"]:mode==="mockup"?["smile-mockup","digital-wax-up"]:["crown","veneer","onlay","inlay","bridge"];
 
@@ -678,9 +717,20 @@ function DesignBridge({ navigate }) {
         {/* ── FILES ── */}
         {step==="files"&&mode&&sys&&(
           <div>
-            <button onClick={()=>setStep("system")} style={{ fontSize:12,color:C.muted,background:"none",border:"none",cursor:"pointer",padding:"0 0 20px",fontFamily:C.sans }}>← Back</button>
+            <button onClick={()=>{if(activePatient&&clearPatient)clearPatient();setStep("system");}} style={{ fontSize:12,color:C.muted,background:"none",border:"none",cursor:"pointer",padding:"0 0 20px",fontFamily:C.sans }}>← Back</button>
+            {/* Active patient banner */}
+            {activePatient && (
+              <div style={{ marginBottom:14, padding:"14px 18px", borderRadius:9, background:C.teal+"18", border:`1.5px solid ${C.teal}60`, display:"flex", gap:14, alignItems:"center" }}>
+                <div style={{ width:44, height:44, borderRadius:"50%", background:`linear-gradient(135deg,${C.teal},#0080cc)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:700, color:"white", flexShrink:0 }}>{activePatient.initials}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:14, fontWeight:700, color:C.ink, marginBottom:2 }}>{activePatient.name} <span style={{ fontSize:11, color:C.muted, fontWeight:400 }}>· Age {activePatient.age} · {activePatient.gender}</span></div>
+                  <div style={{ fontSize:12, color:C.teal }}>{activePatient.type} — {activePatient.subtype} · Teeth {activePatient.teeth} · {activePatient.files.length} files loaded</div>
+                </div>
+                <button onClick={()=>{clearPatient&&clearPatient();setMode(null);setSystem(null);setSlots([]);setDetection(null);setStep("mode");}} style={{ fontSize:10, color:C.muted, background:"none", border:`1px solid ${C.border}`, borderRadius:5, padding:"5px 10px", cursor:"pointer", fontFamily:C.sans }}>Close patient</button>
+              </div>
+            )}
             {/* Auto detection banner */}
-            {autoMode&&detection&&(
+            {autoMode&&detection&&!activePatient&&(
               <div style={{ marginBottom:16,padding:"12px 16px",borderRadius:8,background:C.tealDim,border:`1px solid ${C.tealBorder}`,display:"flex",gap:12,alignItems:"flex-start" }}>
                 <span style={{ fontSize:16,flexShrink:0 }}>⚡</span>
                 <div style={{ flex:1 }}>
@@ -814,13 +864,19 @@ function DesignBridge({ navigate }) {
 // ══════════════════════════════════════════════════════════════════
 // OTHER SCREENS  (functional stubs with real interactions)
 // ══════════════════════════════════════════════════════════════════
-function Dashboard({ navigate }) {
-  const cases=[{id:1,name:"Sarah Johnson",teeth:"#8,#9",type:"Cosmetic Anterior",status:"Design ready",statusColor:C.teal},{id:2,name:"Michael Chen",teeth:"#3",type:"Restorative Posterior",status:"Files needed",statusColor:C.warn},{id:3,name:"Emma Davis",teeth:"#30",type:"Single Implant",status:"In progress",statusColor:C.blue}];
+function Dashboard({ navigate, setActivePatient }) {
+  const colorMap = { teal:C.teal, warn:C.warn, blue:C.blue, purple:C.purple, amber:C.amber };
+  const cases = PATIENTS.map(p => ({ ...p, statusColor: colorMap[p.statusColor] || C.teal }));
+  
+  async function openPatient(p) {
+    setActivePatient(p);
+    navigate("design-bridge");
+  }
   const stats=[
-    {label:"Active cases", value:"3", sub:"April 2026", color:C.teal},
-    {label:"Designs ready", value:"1", sub:"Awaiting export", color:C.green},
-    {label:"In progress", value:"1", sub:"With lab", color:C.blue},
-    {label:"Files needed", value:"1", sub:"Action required", color:C.warn},
+    {label:"Active cases", value:String(cases.length), sub:"April 2026", color:C.teal},
+    {label:"Designs ready", value:String(cases.filter(c=>c.status==="Design ready").length), sub:"Awaiting export", color:C.green},
+    {label:"In progress", value:String(cases.filter(c=>c.status==="In progress").length), sub:"With lab", color:C.blue},
+    {label:"Files needed", value:String(cases.filter(c=>c.status==="Files needed").length), sub:"Action required", color:C.warn},
   ];
   return (
     <div style={{ flex:1,overflow:"auto",padding:"36px 44px",background:C.bg,color:C.ink,fontFamily:C.sans }}>
@@ -856,7 +912,7 @@ function Dashboard({ navigate }) {
         <div style={{ padding:"16px 22px",borderBottom:`1px solid ${C.border}`,fontSize:12,fontFamily:C.font,color:C.teal,letterSpacing:2.5,fontWeight:700 }}>ACTIVE CASES</div>
         {cases.map((c,i)=>(
           <div key={c.id} style={{ padding:"20px 22px",borderBottom:i<cases.length-1?`1px solid ${C.borderSoft}`:"none",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",transition:"background .15s" }}
-            onClick={()=>navigate("ai-design-guide")}
+            onClick={()=>openPatient(c)}
             onMouseEnter={e=>e.currentTarget.style.background=C.surface2}
             onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
             <div style={{ display:"flex",gap:18,alignItems:"center" }}>
@@ -1700,13 +1756,14 @@ function TitleBar({ screen, navigate }) {
 // ══════════════════════════════════════════════════════════════════
 export default function App() {
   const [screen, setScreen] = useState("dashboard");
+  const [activePatient, setActivePatient] = useState(null);
   const navigate = (s) => setScreen(s);
 
   const renderScreen = () => {
     switch(screen) {
-      case "dashboard":       return <Dashboard navigate={navigate} />;
+      case "dashboard":       return <Dashboard navigate={navigate} setActivePatient={setActivePatient} />;
       case "ai-design-guide": return <AIDesignGuide navigate={navigate} />;
-      case "design-bridge":   return <DesignBridge navigate={navigate} />;
+      case "design-bridge":   return <DesignBridge navigate={navigate} activePatient={activePatient} clearPatient={()=>setActivePatient(null)} />;
       case "restoration-cad": return <RestorationCAD navigate={navigate} />;
       case "smile-sim":       return <SmileSimScreen navigate={navigate} />;
       case "implant-plan":    return <ImplantPlanScreen navigate={navigate} />;
