@@ -59,6 +59,10 @@ patient-data/
 uploads/
 cases/
 
+# Exception: public tooth library assets (not patient data)
+!public/libraries/**/*.stl
+!public/libraries/**/*.eoff
+
 # API keys — NEVER commit
 secrets/
 keys/
