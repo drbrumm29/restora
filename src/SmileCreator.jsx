@@ -350,17 +350,66 @@ export default function SmileCreator({ navigate, activePatient }) {
       );
     }
 
-    // If no smile curve yet, show placement instructions
+    // Ghost guide: show where next click should land, based on typical smile photo framing
+    // Approximate positions — left commissure ~25% from left, midline ~50%, right ~75%
+    // at ~60% down from top (typical photo framing of a retracted smile)
     if (!smileCurve && step === 2 && transform) {
-      ctx.save();
-      ctx.fillStyle = 'rgba(10, 186, 181, 0.92)';
-      ctx.fillRect(transform.offsetX, transform.offsetY, transform.imgW, 44);
-      ctx.fillStyle = '#ffffff';
-      ctx.font = "bold 15px system-ui";
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('Click 3 points to place the smile curve: LEFT commissure → MIDLINE (center) → RIGHT commissure', transform.offsetX + transform.imgW / 2, transform.offsetY + 22);
-      ctx.restore();
+      const imgW = transform.imgW;
+      const imgH = transform.imgH;
+      const imgOx = transform.offsetX;
+      const imgOy = transform.offsetY;
+      const ghostY = imgOy + imgH * 0.58;
+      const ghosts = [
+        { x: imgOx + imgW * 0.32, label: 'L', caption: 'Left corner of lips' },
+        { x: imgOx + imgW * 0.50, label: 'M', caption: 'Between front teeth' },
+        { x: imgOx + imgW * 0.68, label: 'R', caption: 'Right corner of lips' },
+      ];
+      const nextIdx = placementBuffer.length;  // which ghost is "active"
+
+      // Pulse animation tied to time
+      const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 500);
+
+      ghosts.forEach((g, i) => {
+        const isActive = i === nextIdx;
+        const isDone = i < nextIdx;
+        if (isDone) return;  // already placed
+
+        ctx.save();
+        // Pulsing outer ring on the active ghost
+        if (isActive) {
+          const ringR = 24 + pulse * 10;
+          ctx.strokeStyle = `rgba(10, 186, 181, ${0.35 + pulse * 0.35})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(g.x, ghostY, ringR, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        // Inner dot
+        ctx.fillStyle = isActive ? 'rgba(10, 186, 181, 0.85)' : 'rgba(10, 186, 181, 0.25)';
+        ctx.strokeStyle = isActive ? '#ffffff' : 'rgba(255,255,255,0.3)';
+        ctx.lineWidth = isActive ? 2 : 1;
+        ctx.beginPath();
+        ctx.arc(g.x, ghostY, isActive ? 14 : 11, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        // Label inside
+        ctx.fillStyle = isActive ? '#ffffff' : 'rgba(255,255,255,0.5)';
+        ctx.font = `bold ${isActive ? 13 : 11}px ${C.font}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(g.label, g.x, ghostY);
+        // Caption below the active one
+        if (isActive) {
+          ctx.font = "600 14px system-ui";
+          ctx.fillStyle = 'rgba(255,255,255,0.95)';
+          ctx.textAlign = 'center';
+          // Shadow behind text for readability
+          ctx.shadowColor = 'rgba(0,0,0,0.7)';
+          ctx.shadowBlur = 8;
+          ctx.fillText(`Tap here: ${g.caption}`, g.x, ghostY + 40);
+        }
+        ctx.restore();
+      });
     }
 
     // Draw smile curve
@@ -468,7 +517,7 @@ export default function SmileCreator({ navigate, activePatient }) {
         ctx.restore();
       });
     }
-  }, [canvasDim, transform, smileCurve, teeth, selectedTooth, shade, showPhoto, showBefore, step, placementBuffer]);
+  }, [canvasDim, transform, smileCurve, teeth, selectedTooth, shade, showPhoto, showBefore, step, placementBuffer, pulseTick]);
 
   // ── Mouse/touch handlers ──────────────────────────────────────
   const getCanvasPoint = (e) => {
@@ -578,8 +627,19 @@ export default function SmileCreator({ navigate, activePatient }) {
     setToothDragOffset(null);
   };
 
-  // Placement buffer for 3-click smile curve placement
+  // Pulse animation loop — keeps ghost dots pulsing while placing the smile curve
+  const [pulseTick, setPulseTick] = useState(0);
   const [placementBuffer, setPlacementBuffer] = useState([]);
+  useEffect(() => {
+    if (smileCurve || step !== 2) return;
+    let raf;
+    const loop = () => {
+      setPulseTick(t => t + 1);
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [smileCurve, step]);
 
   // Mouse cursor style
   const cursor = useMemo(() => {
@@ -629,32 +689,33 @@ export default function SmileCreator({ navigate, activePatient }) {
       <div style={{ padding: "18px 28px", borderBottom: `1px solid ${C.border}`, background: C.surface, flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
           <div>
-            <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.02em", color: C.ink }}>
-              Smile Creator <span style={{ fontSize: 12, padding: "3px 9px", borderRadius: 4, background: C.tealDim, color: C.teal, fontFamily: C.font, marginLeft: 8, letterSpacing: 1, fontWeight: 700, verticalAlign: "middle" }}>2D</span>
+            <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.02em", color: C.ink }}>
+              Smile Creator
             </div>
-            <div style={{ fontSize: 13, color: C.muted, marginTop: 3 }}>
-              {activePatient.name} · {activePatient.type || 'Case'}{activePatient.teeth ? ` · ${activePatient.teeth}` : ''}
+            <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>
+              {activePatient.name}{activePatient.teeth ? ` · ${activePatient.teeth}` : ''}
             </div>
           </div>
 
           {/* Step indicator */}
-          <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontFamily: C.font, letterSpacing: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontFamily: C.sans }}>
             {[
-              { n: 1, label: "PHOTO" },
-              { n: 2, label: "SMILE CURVE" },
-              { n: 3, label: "DESIGN" },
+              { n: 1, label: "Photo" },
+              { n: 2, label: "Smile Curve" },
+              { n: 3, label: "Design" },
             ].map((s, i) => (
-              <div key={s.n} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <div key={s.n} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <div style={{
-                  width: 24, height: 24, borderRadius: 12,
-                  background: step >= s.n ? C.teal : C.surface2,
-                  border: `1px solid ${step >= s.n ? C.teal : C.border}`,
+                  width: 22, height: 22, borderRadius: 11,
+                  background: step >= s.n ? C.teal : "transparent",
+                  border: `1.5px solid ${step >= s.n ? C.teal : C.border}`,
                   color: step >= s.n ? "#fff" : C.muted,
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  fontWeight: 700, fontSize: 12,
-                }}>{s.n}</div>
-                <span style={{ color: step >= s.n ? C.teal : C.muted, fontWeight: step === s.n ? 700 : 500 }}>{s.label}</span>
-                {i < 2 && <span style={{ color: C.border, margin: "0 4px" }}>→</span>}
+                  fontWeight: 700, fontSize: 11,
+                  fontFamily: C.sans,
+                }}>{step > s.n ? "✓" : s.n}</div>
+                <span style={{ color: step === s.n ? C.ink : (step > s.n ? C.teal : C.muted), fontWeight: step === s.n ? 600 : 500 }}>{s.label}</span>
+                {i < 2 && <span style={{ color: C.border, margin: "0 4px", fontSize: 10 }}>›</span>}
               </div>
             ))}
           </div>
@@ -688,18 +749,24 @@ export default function SmileCreator({ navigate, activePatient }) {
               style={{
                 position: "absolute", top: 18, right: 18,
                 padding: "10px 18px",
-                borderRadius: 8,
-                background: showBefore ? C.amber : C.teal,
+                borderRadius: 20,
+                background: "rgba(13, 27, 46, 0.82)",
+                backdropFilter: "blur(10px)",
                 color: "white",
-                border: "none",
-                fontSize: 13,
-                fontFamily: C.font,
-                fontWeight: 700,
-                letterSpacing: 1,
+                border: `1px solid ${showBefore ? C.amber : C.teal}`,
+                fontSize: 12,
+                fontFamily: C.sans,
+                fontWeight: 600,
+                letterSpacing: 0.3,
                 cursor: "pointer",
-                boxShadow: `0 4px 14px ${showBefore ? C.amber + "60" : C.teal + "60"}`,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
               }}
-            >{showBefore ? "● BEFORE" : "○ AFTER (design)"}</button>
+            >
+              <span style={{ width: 7, height: 7, borderRadius: 4, background: showBefore ? C.amber : C.teal, display: "inline-block" }}/>
+              {showBefore ? "Before" : "After"}
+            </button>
           )}
         </div>
 
@@ -707,52 +774,77 @@ export default function SmileCreator({ navigate, activePatient }) {
         <div style={{ width: 320, borderLeft: `1px solid ${C.border}`, background: C.surface, overflow: "auto", padding: "18px", flexShrink: 0 }}>
           {/* STEP 1: photo selection */}
           <div style={{ marginBottom: 22 }}>
-            <div style={{ fontSize: 12, fontFamily: C.font, color: C.muted, letterSpacing: 2, fontWeight: 700, marginBottom: 8 }}>PATIENT PHOTO</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {[
-                { url: "retracted_full.jpg", label: "Retracted — full" },
-                { url: "retracted_labeled.jpg", label: "Retracted — labeled" },
-                { url: "smile_full.jpg", label: "Smile — full" },
-                { url: "smile_with_ref_lines.jpg", label: "Smile + references" },
-              ].map(p => {
-                const url = `/patient-cases/carrie-photos/${p.url}`;
-                const isActive = photoUrl === url;
-                return (
-                  <button key={p.url}
-                    onClick={() => setPhotoUrl(url)}
-                    style={{
-                      padding: "9px 12px",
-                      borderRadius: 7,
-                      background: isActive ? C.tealDim : C.surface2,
-                      border: `1px solid ${isActive ? C.tealBorder : C.border}`,
-                      color: isActive ? C.teal : C.ink,
-                      fontSize: 13,
-                      fontWeight: isActive ? 700 : 500,
-                      cursor: "pointer",
-                      textAlign: "left",
-                      fontFamily: C.sans,
-                    }}>
-                    {isActive && "● "}{p.label}
-                  </button>
-                );
-              })}
-            </div>
+            <div style={{ fontSize: 11, color: C.muted, letterSpacing: 1, fontWeight: 600, marginBottom: 10, textTransform: "uppercase" }}>Photo</div>
+            {activePatient.id === 'carrie-pappas' ? (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {[
+                  { url: "retracted_full.jpg", label: "Retracted" },
+                  { url: "retracted_labeled.jpg", label: "Retracted+" },
+                  { url: "smile_full.jpg", label: "Smile" },
+                  { url: "smile_with_ref_lines.jpg", label: "Smile+" },
+                ].map(p => {
+                  const url = `/patient-cases/carrie-photos/${p.url}`;
+                  const isActive = photoUrl === url;
+                  return (
+                    <button key={p.url}
+                      onClick={() => setPhotoUrl(url)}
+                      style={{
+                        padding: 0,
+                        borderRadius: 8,
+                        background: isActive ? C.tealDim : C.surface2,
+                        border: `2px solid ${isActive ? C.teal : C.border}`,
+                        cursor: "pointer",
+                        overflow: "hidden",
+                        display: "flex",
+                        flexDirection: "column",
+                        transition: "all 0.12s",
+                        fontFamily: C.sans,
+                      }}>
+                      <div style={{ width: "100%", height: 58, backgroundImage: `url(${url})`, backgroundSize: "cover", backgroundPosition: "center" }}/>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: isActive ? C.teal : C.ink, padding: "5px 2px" }}>{p.label}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div>
+                <label style={{
+                  display: "block",
+                  padding: "12px",
+                  borderRadius: 7,
+                  background: C.surface2,
+                  border: `1px dashed ${C.border}`,
+                  color: C.ink,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  textAlign: "center",
+                  fontFamily: C.sans,
+                }}>
+                  📷 Upload retracted smile photo
+                  <input type="file" accept="image/*" style={{ display: "none" }}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      const reader = new FileReader();
+                      reader.onload = () => setPhotoUrl(reader.result);
+                      reader.readAsDataURL(f);
+                    }}/>
+                </label>
+              </div>
+            )}
           </div>
 
           {/* STEP 2: smile curve */}
           {photoLoaded && (
             <div style={{ marginBottom: 22 }}>
-              <div style={{ fontSize: 12, fontFamily: C.font, color: C.muted, letterSpacing: 2, fontWeight: 700, marginBottom: 8 }}>SMILE CURVE</div>
+              <div style={{ fontSize: 11, color: C.muted, letterSpacing: 1, fontWeight: 600, marginBottom: 10, textTransform: "uppercase" }}>Smile Curve</div>
               {!smileCurve ? (
-                <div style={{ padding: "10px 12px", background: C.tealDim, border: `1px solid ${C.tealBorder}`, borderRadius: 7, fontSize: 12, color: C.ink, lineHeight: 1.5 }}>
-                  Click 3 points on the photo:<br/>
-                  1. Left commissure (corner of lips)<br/>
-                  2. Midline (between central incisors)<br/>
-                  3. Right commissure
+                <div style={{ padding: "11px 13px", background: C.tealDim, border: `1px solid ${C.tealBorder}`, borderRadius: 8, fontSize: 12, color: C.ink, lineHeight: 1.6 }}>
+                  Follow the pulsing dots on the photo. Click each in turn: left lip corner, midline, right lip corner.
                 </div>
               ) : (
                 <button onClick={resetSmileCurve}
-                  style={{ width: "100%", padding: "10px", borderRadius: 7, background: C.surface2, border: `1px solid ${C.border}`, color: C.amber, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: C.sans }}>
+                  style={{ width: "100%", padding: "10px", borderRadius: 8, background: C.surface2, border: `1px solid ${C.border}`, color: C.amber, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: C.sans }}>
                   ↺ Re-place smile curve
                 </button>
               )}
@@ -763,67 +855,150 @@ export default function SmileCreator({ navigate, activePatient }) {
           {smileCurve && (
             <>
               <div style={{ marginBottom: 22 }}>
-                <div style={{ fontSize: 12, fontFamily: C.font, color: C.muted, letterSpacing: 2, fontWeight: 700, marginBottom: 8 }}>PROPORTION</div>
-                <select value={proportion} onChange={e => setProportion(e.target.value)}
-                  style={{ width: "100%", padding: "10px 12px", borderRadius: 7, border: `1px solid ${C.border}`, background: C.surface2, color: C.ink, fontSize: 14, fontFamily: C.sans, outline: "none" }}>
-                  {Object.entries(PROPORTIONS).map(([key, p]) => (
-                    <option key={key} value={key}>{p.label}</option>
-                  ))}
-                </select>
-                <div style={{ marginTop: 6, fontSize: 12, color: C.muted, lineHeight: 1.4 }}>{PROPORTIONS[proportion].description}</div>
-              </div>
-
-              <div style={{ marginBottom: 22 }}>
-                <div style={{ fontSize: 12, fontFamily: C.font, color: C.muted, letterSpacing: 2, fontWeight: 700, marginBottom: 8 }}>LIBRARY (tooth shapes)</div>
-                <select value={library} onChange={e => setLibrary(e.target.value)}
-                  style={{ width: "100%", padding: "10px 12px", borderRadius: 7, border: `1px solid ${C.border}`, background: C.surface2, color: C.ink, fontSize: 14, fontFamily: C.sans, outline: "none" }}>
-                  <option value="dannydesigner5">Danny Designer 5 (ovoid)</option>
-                  <option value="dannydesigner4">Danny Designer 4 (square)</option>
-                  <option value="g01">G01 Aesthetic</option>
-                  <option value="g02">G02 Aesthetic</option>
-                </select>
-                <div style={{ marginTop: 6, fontSize: 12, color: C.muted, lineHeight: 1.4 }}>Commit 2 will add library-specific 2D silhouettes. Currently uses generic anatomic outlines.</div>
-              </div>
-
-              <div style={{ marginBottom: 22 }}>
-                <div style={{ fontSize: 12, fontFamily: C.font, color: C.muted, letterSpacing: 2, fontWeight: 700, marginBottom: 8 }}>SHADE</div>
-                <select value={shade} onChange={e => setShade(e.target.value)}
-                  style={{ width: "100%", padding: "10px 12px", borderRadius: 7, border: `1px solid ${C.border}`, background: C.surface2, color: C.ink, fontSize: 14, fontFamily: C.sans, outline: "none" }}>
-                  {Object.keys(SHADE_HEX).map(s => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
-                  <div style={{ width: 20, height: 20, borderRadius: 4, background: SHADE_HEX[shade], border: `1px solid ${C.border}` }}/>
-                  <span style={{ fontSize: 12, color: C.muted, fontFamily: C.font }}>{SHADE_HEX[shade].toUpperCase()}</span>
+                <div style={{ fontSize: 11, color: C.muted, letterSpacing: 1, fontWeight: 600, marginBottom: 10, textTransform: "uppercase" }}>Proportion</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {Object.entries(PROPORTIONS).map(([key, p]) => {
+                    const isActive = proportion === key;
+                    return (
+                      <button key={key}
+                        onClick={() => setProportion(key)}
+                        style={{
+                          padding: "10px 10px 8px",
+                          borderRadius: 10,
+                          background: isActive ? C.tealDim : C.surface2,
+                          border: `1.5px solid ${isActive ? C.teal : C.border}`,
+                          cursor: "pointer",
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          gap: 6,
+                          transition: "all 0.12s",
+                          fontFamily: C.sans,
+                        }}>
+                        {/* Mini SVG preview of this proportion */}
+                        <svg width="76" height="30" viewBox="0 0 76 30" style={{ display: "block" }}>
+                          {p.widths.slice().reverse().concat(p.widths.slice(1)).map((w, i, arr) => {
+                            const totalW = arr.reduce((a,b) => a+b, 0);
+                            let cumOffset = 0;
+                            for (let j = 0; j < i; j++) cumOffset += arr[j];
+                            const xScale = 70 / totalW;
+                            const xStart = 3 + cumOffset * xScale;
+                            const width = w * xScale - 1;
+                            const height = 22 * (0.8 + w * 0.2);
+                            const y = 28 - height;
+                            return (
+                              <rect key={i} x={xStart} y={y} width={Math.max(width, 1)} height={height}
+                                fill={isActive ? C.teal : 'rgba(192,212,234,0.5)'}
+                                rx="1.5"/>
+                            );
+                          })}
+                        </svg>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: isActive ? C.teal : C.ink, textAlign: "center", lineHeight: 1.2 }}>
+                          {p.label}
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
+                <div style={{ marginTop: 8, fontSize: 12, color: C.muted, lineHeight: 1.5 }}>{PROPORTIONS[proportion].description}</div>
+              </div>
+
+              <div style={{ marginBottom: 22 }}>
+                <div style={{ fontSize: 11, color: C.muted, letterSpacing: 1, fontWeight: 600, marginBottom: 10, textTransform: "uppercase" }}>Tooth Shape</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {[
+                    { id: "dannydesigner5", name: "Ovoid", subtitle: "Feminine", key: "ovoid" },
+                    { id: "dannydesigner4", name: "Square", subtitle: "Masculine", key: "square" },
+                    { id: "g01", name: "Balanced", subtitle: "Default", key: "balanced" },
+                    { id: "g02", name: "Natural", subtitle: "Varied", key: "natural" },
+                  ].map(lib => {
+                    const isActive = library === lib.id;
+                    // Line-drawing preview of the tooth shape
+                    const shape = lib.key === 'ovoid' ? 'ovoid' : lib.key === 'square' ? 'square' : 'balanced';
+                    return (
+                      <button key={lib.id}
+                        onClick={() => setLibrary(lib.id)}
+                        style={{
+                          padding: "10px 10px 8px",
+                          borderRadius: 10,
+                          background: isActive ? C.tealDim : C.surface2,
+                          border: `1.5px solid ${isActive ? C.teal : C.border}`,
+                          cursor: "pointer",
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          gap: 4,
+                          transition: "all 0.12s",
+                          fontFamily: C.sans,
+                        }}>
+                        <svg width="40" height="44" viewBox="0 0 40 44">
+                          {shape === 'ovoid' && <ellipse cx="20" cy="22" rx="13" ry="18" fill={isActive ? C.teal : 'rgba(192,212,234,0.45)'} />}
+                          {shape === 'square' && <rect x="6" y="4" width="28" height="36" rx="4" fill={isActive ? C.teal : 'rgba(192,212,234,0.45)'} />}
+                          {shape === 'balanced' && <path d="M 20 4 Q 32 4 33 18 Q 33 38 20 40 Q 7 38 7 18 Q 8 4 20 4 Z" fill={isActive ? C.teal : 'rgba(192,212,234,0.45)'} />}
+                        </svg>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: isActive ? C.teal : C.ink }}>{lib.name}</div>
+                        <div style={{ fontSize: 10, color: C.muted, letterSpacing: 0.5 }}>{lib.subtitle}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 22 }}>
+                <div style={{ fontSize: 11, color: C.muted, letterSpacing: 1, fontWeight: 600, marginBottom: 10, textTransform: "uppercase" }}>Shade</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+                  {["BL1","BL2","BL3","BL4","A1","A2","A3","A3.5"].map(s => {
+                    const isActive = shade === s;
+                    return (
+                      <button key={s}
+                        onClick={() => setShade(s)}
+                        style={{
+                          padding: "6px 4px",
+                          borderRadius: 8,
+                          background: isActive ? C.tealDim : C.surface2,
+                          border: `1.5px solid ${isActive ? C.teal : C.border}`,
+                          cursor: "pointer",
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          gap: 4,
+                          transition: "all 0.12s",
+                          fontFamily: C.sans,
+                        }}>
+                        <div style={{ width: 24, height: 24, borderRadius: 12, background: SHADE_HEX[s], border: "1px solid rgba(0,0,0,0.15)", boxShadow: "inset 0 -2px 4px rgba(0,0,0,0.1)" }}/>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: isActive ? C.teal : C.ink }}>{s}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <button onClick={() => { /* expand to show more shades */ }}
+                  style={{ marginTop: 6, width: "100%", padding: "6px", borderRadius: 6, background: "transparent", border: "none", color: C.muted, fontSize: 11, cursor: "pointer", fontFamily: C.sans }}>
+                  All shades ▾
+                </button>
               </div>
 
               {/* Selected tooth info */}
               {selectedToothData && (
-                <div style={{ marginBottom: 22, padding: "12px", background: C.tealDim, border: `1px solid ${C.tealBorder}`, borderRadius: 8 }}>
-                  <div style={{ fontSize: 12, fontFamily: C.font, color: C.teal, letterSpacing: 2, fontWeight: 700, marginBottom: 8 }}>TOOTH #{selectedToothData.num}</div>
-                  <div style={{ fontSize: 12, color: C.ink, lineHeight: 1.7 }}>
-                    <div>Type: <strong>{selectedToothData.type}</strong></div>
-                    <div>Width: <strong>{(selectedToothData.width / transform?.scale).toFixed(1)}px</strong></div>
-                    <div>Height: <strong>{(selectedToothData.height / transform?.scale).toFixed(1)}px</strong></div>
+                <div style={{ marginBottom: 22, padding: "14px 14px 12px", background: C.tealDim, border: `1px solid ${C.tealBorder}`, borderRadius: 10 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
+                    <div style={{ fontSize: 11, color: C.muted, letterSpacing: 1, fontWeight: 600, textTransform: "uppercase" }}>Selected</div>
+                    <div style={{ fontSize: 18, color: C.teal, fontWeight: 700, fontFamily: C.font }}>#{selectedToothData.num}</div>
+                  </div>
+                  <div style={{ fontSize: 13, color: C.ink, textTransform: "capitalize", marginBottom: 6 }}>{selectedToothData.type} incisor</div>
+                  <div style={{ display: "flex", gap: 14, fontSize: 12, color: C.muted }}>
+                    <span>W <span style={{ color: C.ink, fontFamily: C.font }}>{(selectedToothData.width / (transform?.scale || 1)).toFixed(0)}</span></span>
+                    <span>H <span style={{ color: C.ink, fontFamily: C.font }}>{(selectedToothData.height / (transform?.scale || 1)).toFixed(0)}</span></span>
                   </div>
                   <div style={{ marginTop: 10, fontSize: 11, color: C.muted, lineHeight: 1.5 }}>
-                    Drag on canvas to move.<br/>Commit 2: resize + rotate handles.<br/>Press DEL to remove.
+                    Drag to move · <kbd style={{ padding: "1px 5px", background: C.surface2, borderRadius: 3, fontFamily: C.font, fontSize: 10, border: `1px solid ${C.border}`, color: C.ink }}>DEL</kbd> to remove
                   </div>
                 </div>
               )}
 
               <div style={{ marginTop: 18, paddingTop: 14, borderTop: `1px solid ${C.borderSoft}` }}>
-                <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5, marginBottom: 10 }}>
-                  ℹ️ This is Commit 1 — foundation. Click tooth to select/drag. Upcoming:<br/>
-                  • Resize + rotate handles (Commit 2)<br/>
-                  • Library-specific silhouettes (Commit 3)<br/>
-                  • Export PNG + lab package (Commit 4)
-                </div>
                 <button onClick={() => setShowPhoto(p => !p)}
-                  style={{ width: "100%", padding: "9px", borderRadius: 6, background: C.surface2, border: `1px solid ${C.border}`, color: C.ink, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: C.sans, marginBottom: 8 }}>
-                  {showPhoto ? "Hide" : "Show"} patient photo
+                  style={{ width: "100%", padding: "10px", borderRadius: 8, background: "transparent", border: `1px solid ${C.border}`, color: C.muted, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: C.sans }}>
+                  {showPhoto ? "Hide photo" : "Show photo"}
                 </button>
               </div>
             </>

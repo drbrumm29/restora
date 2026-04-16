@@ -32,18 +32,20 @@ const C = {
 };
 
 // ── Navigation screens ─────────────────────────────────────────────
+// Three sections, consistent geometric icons, minimal badges.
+// Smile Creator is the primary design tool; Restoration CAD is a viewer.
 const SCREENS = {
-  "dashboard":        { label:"Dashboard",        icon:"⬡", section:"Start" },
-  "ai-design-guide":  { label:"AI Design Guide",  icon:"◈", section:"Start", badge:"New" },
-  "design-bridge":    { label:"Design Systems",   icon:"✦", section:"Design", badge:"3 Systems" },
-  "restoration-cad":  { label:"Restoration CAD",  icon:"✏️", section:"Design" },
-  "smile-creator":    { label:"Smile Creator",    icon:"😊", section:"Design", badge:"2D" },
-  "smile-sim":        { label:"Smile Simulation", icon:"◉", section:"Design" },
+  "dashboard":        { label:"Dashboard",        icon:"◇", section:"Start" },
+  "smile-creator":    { label:"Smile Creator",    icon:"○", section:"Design" },
+  "restoration-cad":  { label:"Scan Viewer",      icon:"◐", section:"Design" },
+  "smile-sim":        { label:"Photo Overlay",    icon:"◑", section:"Design" },
+  "tooth-library":    { label:"Tooth Library",    icon:"▣", section:"Design" },
   "implant-plan":     { label:"Implant Planning", icon:"◆", section:"Planning" },
-  "radiograph":       { label:"X-ray Analysis",   icon:"⚡", section:"Planning", badge:"AI" },
-  "full-arch":        { label:"Full Arch",         icon:"⬟", section:"Planning" },
-  "export":           { label:"Export Hub",        icon:"↑",  section:"Delivery" },
-  "tooth-library":    { label:"Tooth Library",     icon:"⊡",  section:"Library" },
+  "radiograph":       { label:"X-ray Analysis",   icon:"△", section:"Planning" },
+  "full-arch":        { label:"Full Arch",         icon:"◇", section:"Planning" },
+  "design-bridge":    { label:"Design Systems",   icon:"◫", section:"Planning" },
+  "ai-design-guide":  { label:"AI Guide",         icon:"✦", section:"Planning" },
+  "export":           { label:"Export",            icon:"↗", section:"Delivery" },
 };
 
 // ── Shared atoms ───────────────────────────────────────────────────

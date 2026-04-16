@@ -866,9 +866,9 @@ export default function RestorationCAD({ navigate, activePatient }) {
       {/* Header bar */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 22px", borderBottom:`1px solid ${C.border}`, gap:14, flexWrap:"wrap", flexShrink:0 }}>
         <div>
-          <div style={{ fontSize:22, fontWeight:800, letterSpacing:"-.02em" }}>Restoration CAD <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 4, background: C.tealDim, color: C.teal, fontFamily: C.font, marginLeft: 8, letterSpacing: 1, fontWeight: 700, verticalAlign: "middle" }}>3D SCAN VIEWER</span></div>
-          <div style={{ fontSize:15, color:C.muted, marginTop:3 }}>
-            {patient?.name ? `${patient.name} · ${patient.teeth}` : "No patient loaded"} · {stats.meshCount} mesh · {stats.triCount.toLocaleString()} tris
+          <div style={{ fontSize:22, fontWeight:700, letterSpacing:"-.02em" }}>Scan Viewer</div>
+          <div style={{ fontSize:13, color:C.muted, marginTop:2 }}>
+            {patient?.name ? `${patient.name}${patient.teeth ? ' · ' + patient.teeth : ''}` : "No patient loaded"} · {stats.meshCount} mesh · {stats.triCount.toLocaleString()} tris
           </div>
         </div>
         <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"center" }}>
@@ -1061,18 +1061,6 @@ export default function RestorationCAD({ navigate, activePatient }) {
 
         {/* Right panel — mesh list + controls */}
         <div style={{ width:400, borderLeft:`1px solid ${C.border}`, background:C.surface, display:"flex", flexDirection:"column", flexShrink:0 }}>
-          {/* Material + shade */}
-          <div style={{ padding:"16px 20px", borderBottom:`1px solid ${C.border}` }}>
-            <div style={{ fontSize:16, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:10, fontWeight:700 }}>MATERIAL</div>
-            <select value={material} onChange={e=>setMat(e.target.value)} style={{ width:"100%", padding:"11px 14px", borderRadius:7, border:`1px solid ${C.border}`, background:C.surface2, color:C.ink, fontSize:15, fontFamily:C.sans, outline:"none", marginBottom:10 }}>
-              {["eMax LT","eMax MT","eMax HT","Zirconia MT","Zirconia HT","Pressed lithium disilicate","Feldspathic porcelain","Composite"].map(x=><option key={x}>{x}</option>)}
-            </select>
-            <div style={{ fontSize:16, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:10, fontWeight:700, marginTop:14 }}>SHADE</div>
-            <select value={shade} onChange={e=>setShade(e.target.value)} style={{ width:"100%", padding:"11px 14px", borderRadius:7, border:`1px solid ${C.border}`, background:C.surface2, color:C.ink, fontSize:15, fontFamily:C.sans, outline:"none" }}>
-              {["BL1","BL2","BL3","BL4","A1","A2","A3","A3.5","B1","B2","C1"].map(x=><option key={x}>{x}</option>)}
-            </select>
-          </div>
-
           {/* Mesh list */}
           <div style={{ flex:1, overflow:"auto" }}>
             {/* Tooth labels panel removed — design workflow now lives in Smile Creator (2D) */}
