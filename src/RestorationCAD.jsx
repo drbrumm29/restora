@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import * as THREE from "three";
 import { PATIENTS } from "./patient-cases.js";
 
@@ -62,14 +62,18 @@ function parseSTL(buffer) {
 }
 
 // ── The 3D Viewer ────────────────────────────────────────────────
-function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats }) {
+function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats, labelMode, toothLabels, onAddLabel, targetTeeth, onPickedLocation }) {
   const mountRef = useRef(null);
   const rendererRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
   const meshObjectsRef = useRef({}); // id -> THREE.Mesh
+  const labelGroupRef = useRef(null); // THREE.Group for badge sprites
   const rafRef = useRef(0);
-  const rotateRef = useRef({ isDragging:false, prevX:0, prevY:0, theta:Math.PI/4, phi:Math.PI/3, dist:50 });
+  const rotateRef = useRef({ isDragging:false, prevX:0, prevY:0, theta:Math.PI/4, phi:Math.PI/3, dist:50, dragDist:0 });
+  const raycasterRef = useRef(null);
+  const labelModeRef = useRef(labelMode);
+  useEffect(() => { labelModeRef.current = labelMode; }, [labelMode]);
 
   // Init scene once
   useEffect(() => {
@@ -91,6 +95,14 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats 
     // Hemisphere fill — simulates diffuse ambient light typical in dental operatory
     const hemi = new THREE.HemisphereLight(0xf4f0e8, 0x1a1a2a, 0.4);
     scene.add(amb, dir1, dir2, dir3, hemi);
+
+    // Label group holds all tooth number badges
+    const labelGroup = new THREE.Group();
+    scene.add(labelGroup);
+    labelGroupRef.current = labelGroup;
+
+    // Raycaster for click-to-label
+    raycasterRef.current = new THREE.Raycaster();
 
     // Grid + axes for orientation
     const grid = new THREE.GridHelper(100, 20, 0x264060, 0x1a2f48);
@@ -116,17 +128,45 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats 
       r.isDragging = true;
       r.prevX = e.clientX || e.touches?.[0]?.clientX || 0;
       r.prevY = e.clientY || e.touches?.[0]?.clientY || 0;
+      r.startX = r.prevX; r.startY = r.prevY;
+      r.dragDist = 0;
     };
     const onMove = (e) => {
       if (!r.isDragging) return;
       const cx = e.clientX || e.touches?.[0]?.clientX || 0;
       const cy = e.clientY || e.touches?.[0]?.clientY || 0;
-      r.theta -= (cx - r.prevX) * 0.008;
-      r.phi = Math.max(0.15, Math.min(Math.PI - 0.15, r.phi - (cy - r.prevY) * 0.008));
+      if (!labelModeRef.current) {
+        r.theta -= (cx - r.prevX) * 0.008;
+        r.phi = Math.max(0.15, Math.min(Math.PI - 0.15, r.phi - (cy - r.prevY) * 0.008));
+        updateCamera();
+      }
+      r.dragDist += Math.abs(cx - r.prevX) + Math.abs(cy - r.prevY);
       r.prevX = cx; r.prevY = cy;
-      updateCamera();
     };
-    const onUp = () => { r.isDragging = false; };
+    const onUp = (e) => {
+      const wasClick = r.isDragging && r.dragDist < 5;
+      r.isDragging = false;
+      if (wasClick && labelModeRef.current && onPickedLocation) {
+        // Raycast to find tooth surface hit point
+        const rect = el.getBoundingClientRect();
+        const cx = (e.clientX || e.changedTouches?.[0]?.clientX || r.prevX) - rect.left;
+        const cy = (e.clientY || e.changedTouches?.[0]?.clientY || r.prevY) - rect.top;
+        const mouse = new THREE.Vector2(
+          (cx / rect.width) * 2 - 1,
+          -(cy / rect.height) * 2 + 1
+        );
+        const rc = raycasterRef.current;
+        rc.setFromCamera(mouse, camera);
+        const archMeshes = Object.entries(meshObjectsRef.current)
+          .filter(([id]) => id.includes('upper') || id.includes('lower') || id.includes('arch'))
+          .map(([,o]) => o).filter(o => o.visible);
+        const hits = rc.intersectObjects(archMeshes, false);
+        if (hits.length > 0) {
+          const p = hits[0].point;
+          onPickedLocation({ x: p.x, y: p.y, z: p.z });
+        }
+      }
+    };
     const onWheel = (e) => {
       e.preventDefault();
       r.dist = Math.max(8, Math.min(200, r.dist * (1 + e.deltaY * 0.001)));
@@ -239,6 +279,8 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats 
       Object.values(meshObjectsRef.current).forEach(o => {
         o.position.set(-center.x, -center.y, -center.z);
       });
+      // Track center offset so badges can be placed correctly
+      rotateRef.current.centerOffset = { x:-center.x, y:-center.y, z:-center.z };
       const desiredDist = maxDim * 1.8;
       if (rotateRef.current.dist === 50 || Math.abs(rotateRef.current.dist - desiredDist) > maxDim) {
         rotateRef.current.dist = Math.max(10, desiredDist);
@@ -248,7 +290,52 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats 
     onStats?.({ meshCount: meshes.filter(m=>m.visible!==false).length, triCount: totalTris });
   }, [meshes, activeId, wireframe]);
 
-  return <div ref={mountRef} style={{ width:"100%", height:"100%", position:"relative", cursor:"grab", touchAction:"none" }}/>;
+  // ── Tooth label badges (sprite-based, always face camera) ──
+  useEffect(() => {
+    const group = labelGroupRef.current;
+    if (!group) return;
+    // Clear existing labels
+    while (group.children.length > 0) {
+      const s = group.children[0];
+      group.remove(s);
+      if (s.material?.map) s.material.map.dispose();
+      if (s.material) s.material.dispose();
+    }
+    if (!toothLabels || toothLabels.length === 0) return;
+    const offset = rotateRef.current.centerOffset || { x:0, y:0, z:0 };
+
+    toothLabels.forEach(lbl => {
+      const isTarget = (targetTeeth || []).includes(lbl.num);
+      // Build text canvas
+      const canvas = document.createElement('canvas');
+      canvas.width = 128; canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+      // Background circle
+      ctx.beginPath();
+      ctx.arc(64, 64, 52, 0, Math.PI*2);
+      ctx.fillStyle = isTarget ? 'rgba(10,186,181,0.95)' : 'rgba(26,47,72,0.9)';
+      ctx.fill();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = isTarget ? 'rgba(255,255,255,0.8)' : 'rgba(10,186,181,0.6)';
+      ctx.stroke();
+      // Text
+      ctx.fillStyle = isTarget ? 'white' : '#0abab5';
+      ctx.font = 'bold 58px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(lbl.num), 64, 66);
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.needsUpdate = true;
+      const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false });
+      const sprite = new THREE.Sprite(mat);
+      sprite.position.set(lbl.x + offset.x, lbl.y + offset.y, lbl.z + offset.z);
+      sprite.scale.set(3.5, 3.5, 1);
+      sprite.renderOrder = 999;
+      group.add(sprite);
+    });
+  }, [toothLabels, targetTeeth, meshes]);
+
+  return <div ref={mountRef} style={{ width:"100%", height:"100%", position:"relative", cursor: labelMode ? "crosshair" : "grab", touchAction:"none" }}/>;
 }
 
 // ── Main screen ──────────────────────────────────────────────────
@@ -272,8 +359,46 @@ export default function RestorationCAD({ navigate, activePatient }) {
   const [material, setMat]    = useState("eMax LT");
   const [shade, setShade]     = useState("A1");
   const [bgColor]             = useState(0x0a1420);
+  const [labelMode, setLabelMode] = useState(false);
+  const [toothLabels, setToothLabels] = useState([]);  // [{num, x, y, z}, ...]
+  const [pendingPick, setPendingPick] = useState(null); // { x, y, z }
 
   const patient = activePatient || PATIENTS[0];
+
+  // Parse target teeth from patient.teeth (e.g. "#4-#13" → [4,5,6,7,8,9,10,11,12,13])
+  const targetTeeth = useMemo(() => {
+    if (!patient?.teeth) return [];
+    const teeth = [];
+    const text = String(patient.teeth).replace(/#/g, '');
+    // Handle ranges like "4-13" and comma lists like "8,9" or "7-10"
+    text.split(/[,\s]+/).forEach(part => {
+      const range = part.match(/^(\d+)\s*[-–]\s*(\d+)$/);
+      if (range) {
+        const a = +range[1], b = +range[2];
+        for (let i = Math.min(a,b); i <= Math.max(a,b); i++) teeth.push(i);
+      } else if (/^\d+$/.test(part)) {
+        teeth.push(+part);
+      }
+    });
+    return teeth;
+  }, [patient?.teeth]);
+
+  // Load labels from localStorage per-patient
+  useEffect(() => {
+    if (!patient?.id) return;
+    try {
+      const saved = localStorage.getItem(`restora-labels-${patient.id}`);
+      setToothLabels(saved ? JSON.parse(saved) : []);
+    } catch { setToothLabels([]); }
+  }, [patient?.id]);
+
+  // Save labels on change
+  useEffect(() => {
+    if (!patient?.id) return;
+    try {
+      localStorage.setItem(`restora-labels-${patient.id}`, JSON.stringify(toothLabels));
+    } catch {}
+  }, [toothLabels, patient?.id]);
 
   // Load patient files into viewer
   useEffect(() => {
@@ -391,6 +516,7 @@ export default function RestorationCAD({ navigate, activePatient }) {
         </div>
         <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
           <button onClick={()=>setShowLib(s=>!s)} style={{ padding:"10px 16px", borderRadius:8, background:C.purple+"20", color:C.purple, border:`1px solid ${C.purple}50`, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:C.sans }}>＋ Add Library Tooth</button>
+          <button onClick={()=>setLabelMode(m=>!m)} style={{ padding:"10px 16px", borderRadius:8, background:labelMode?C.teal:C.surface2, color:labelMode?"white":C.muted, border:`1px solid ${labelMode?C.teal:C.border}`, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:C.sans }}>{labelMode?"✓ Labeling":"🏷 Label Teeth"}</button>
           <button onClick={()=>setWire(w=>!w)} style={{ padding:"10px 16px", borderRadius:8, background:wireframe?C.tealDim:C.surface2, color:wireframe?C.teal:C.muted, border:`1px solid ${wireframe?C.tealBorder:C.border}`, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:C.sans }}>{wireframe?"✓ Wireframe":"Wireframe"}</button>
           <button onClick={exportDesign} disabled={meshes.length===0} style={{ padding:"10px 16px", borderRadius:8, background:meshes.length?C.teal:C.surface2, color:meshes.length?"white":C.muted, border:"none", fontSize:14, fontWeight:700, cursor:meshes.length?"pointer":"not-allowed", fontFamily:C.sans }}>⬇ Export Design STL</button>
         </div>
@@ -400,11 +526,77 @@ export default function RestorationCAD({ navigate, activePatient }) {
       <div style={{ flex:1, display:"flex", minHeight:0 }}>
         {/* Viewer */}
         <div style={{ flex:1, position:"relative", minWidth:0, background:"#0a1420" }}>
-          <STLViewer meshes={meshes} activeId={activeId} onSelect={setActive} wireframe={wireframe} background={bgColor} onStats={setStats}/>
+          <STLViewer
+            meshes={meshes}
+            activeId={activeId}
+            onSelect={setActive}
+            wireframe={wireframe}
+            background={bgColor}
+            onStats={setStats}
+            labelMode={labelMode}
+            toothLabels={toothLabels}
+            targetTeeth={targetTeeth}
+            onPickedLocation={(loc) => setPendingPick(loc)}
+          />
 
           {loading && (
             <div style={{ position:"absolute", top:16, left:16, padding:"10px 14px", borderRadius:8, background:C.surface+"ee", border:`1px solid ${C.border}`, fontSize:12, color:C.teal, fontFamily:C.font, fontWeight:700, letterSpacing:.8 }}>
               LOADING STL FILES…
+            </div>
+          )}
+
+          {/* Label mode banner */}
+          {labelMode && !pendingPick && (
+            <div style={{ position:"absolute", top:16, left:"50%", transform:"translateX(-50%)", padding:"12px 20px", borderRadius:10, background:C.teal, color:"white", fontSize:13, fontWeight:700, fontFamily:C.sans, boxShadow:"0 4px 20px rgba(10,186,181,0.4)", zIndex:10 }}>
+              🏷 Click any tooth to label it
+              {targetTeeth.length > 0 && <span style={{ marginLeft:10, opacity:.85 }}> · Target: #{targetTeeth.join(", #")}</span>}
+            </div>
+          )}
+
+          {/* Tooth number picker modal (shown when user clicks while in label mode) */}
+          {pendingPick && (
+            <div style={{ position:"absolute", inset:0, background:"rgba(10,20,32,0.85)", backdropFilter:"blur(8px)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:20, padding:20 }}>
+              <div style={{ background:C.surface, border:`1.5px solid ${C.tealBorder}`, borderRadius:14, padding:24, maxWidth:560, width:"100%", boxShadow:"0 20px 60px rgba(0,0,0,0.6)" }}>
+                <div style={{ fontSize:13, fontFamily:C.font, color:C.teal, letterSpacing:2, fontWeight:700, marginBottom:6 }}>ASSIGN TOOTH NUMBER</div>
+                <div style={{ fontSize:15, color:C.ink, marginBottom:18 }}>
+                  Which tooth did you click? (Universal #1-32)
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(8, 1fr)", gap:6, marginBottom:18 }}>
+                  {Array.from({ length: 32 }, (_, i) => i + 1).map(n => {
+                    const isTarget = targetTeeth.includes(n);
+                    const alreadyUsed = toothLabels.find(l => l.num === n);
+                    return (
+                      <button
+                        key={n}
+                        onClick={() => {
+                          setToothLabels(labels => [
+                            ...labels.filter(l => l.num !== n),
+                            { num: n, ...pendingPick }
+                          ]);
+                          setPendingPick(null);
+                        }}
+                        style={{
+                          padding:"10px 4px",
+                          borderRadius:7,
+                          background: alreadyUsed ? C.amber+"30" : isTarget ? C.tealDim : C.surface2,
+                          color: alreadyUsed ? C.amber : isTarget ? C.teal : C.ink,
+                          border: `1.5px solid ${alreadyUsed ? C.amber : isTarget ? C.teal : C.border}`,
+                          fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:C.font,
+                        }}
+                        title={alreadyUsed ? `#${n} already labeled — click to reassign` : isTarget ? `Target tooth for ${patient?.name}'s case` : ""}
+                      >{n}</button>
+                    );
+                  })}
+                </div>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", fontSize:11, color:C.muted }}>
+                  <span>
+                    <span style={{ color:C.teal }}>■</span> Target teeth &nbsp;
+                    <span style={{ color:C.amber }}>■</span> Already labeled
+                  </span>
+                  <button onClick={() => setPendingPick(null)}
+                    style={{ padding:"8px 14px", borderRadius:6, background:"transparent", color:C.muted, border:`1px solid ${C.border}`, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:C.sans }}>Cancel</button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -461,6 +653,52 @@ export default function RestorationCAD({ navigate, activePatient }) {
 
           {/* Mesh list */}
           <div style={{ flex:1, overflow:"auto" }}>
+            {/* Tooth labels section */}
+            {(toothLabels.length > 0 || targetTeeth.length > 0) && (
+              <>
+                <div style={{ padding:"14px 18px 8px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                  <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, fontWeight:700 }}>
+                    TOOTH LABELS ({toothLabels.length}/{targetTeeth.length || 32})
+                  </div>
+                  {toothLabels.length > 0 && (
+                    <button onClick={()=>{ if(confirm(`Clear all ${toothLabels.length} tooth labels for ${patient?.name}?`)) setToothLabels([]); }}
+                      style={{ padding:"4px 8px", borderRadius:4, background:"transparent", color:C.muted, border:`1px solid ${C.borderSoft}`, fontSize:10, cursor:"pointer", fontFamily:C.sans }}>Clear</button>
+                  )}
+                </div>
+                {targetTeeth.length > 0 && (
+                  <div style={{ padding:"0 18px 8px", fontSize:10, color:C.muted, lineHeight:1.5 }}>
+                    Case targets: <span style={{ color:C.teal, fontFamily:C.font }}>#{targetTeeth.join(", #")}</span>
+                  </div>
+                )}
+                {toothLabels.length === 0 && (
+                  <div style={{ padding:"8px 18px 14px", fontSize:11, color:C.muted, lineHeight:1.6 }}>
+                    Click <span style={{ color:C.teal, fontWeight:700 }}>🏷 Label Teeth</span> above, then tap each tooth in the 3D view to assign numbers.
+                  </div>
+                )}
+                {toothLabels.length > 0 && (
+                  <div style={{ padding:"0 14px 14px", display:"flex", flexWrap:"wrap", gap:5 }}>
+                    {[...toothLabels].sort((a,b)=>a.num-b.num).map(lbl => {
+                      const isTarget = targetTeeth.includes(lbl.num);
+                      return (
+                        <div key={lbl.num} style={{ display:"flex", alignItems:"center", gap:4, padding:"4px 4px 4px 9px", borderRadius:5, background: isTarget ? C.tealDim : C.surface2, border:`1px solid ${isTarget ? C.teal : C.border}`, fontSize:12, fontWeight:700, color: isTarget ? C.teal : C.ink, fontFamily:C.font }}>
+                          #{lbl.num}
+                          <button onClick={()=>setToothLabels(ls=>ls.filter(l=>l.num!==lbl.num))}
+                            style={{ width:18, height:18, borderRadius:3, background:"transparent", color:C.muted, border:"none", fontSize:14, cursor:"pointer", lineHeight:1, padding:0 }}
+                            title="Remove label">×</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {/* Missing targets warning */}
+                {targetTeeth.length > 0 && targetTeeth.some(n => !toothLabels.find(l=>l.num===n)) && (
+                  <div style={{ margin:"0 14px 14px", padding:"8px 12px", borderRadius:6, background:C.amber+"15", border:`1px solid ${C.amber}40`, fontSize:10, color:C.amber, lineHeight:1.5 }}>
+                    Missing: #{targetTeeth.filter(n=>!toothLabels.find(l=>l.num===n)).join(", #")}
+                  </div>
+                )}
+              </>
+            )}
+
             <div style={{ padding:"14px 18px 8px", fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, fontWeight:700 }}>
               MESHES ({meshes.length})
             </div>
