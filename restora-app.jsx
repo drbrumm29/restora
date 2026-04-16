@@ -730,13 +730,40 @@ function DesignBridge({ navigate, activePatient, clearPatient }) {
             <button onClick={()=>{if(activePatient&&clearPatient)clearPatient();setStep("system");}} style={{ fontSize:12,color:C.muted,background:"none",border:"none",cursor:"pointer",padding:"0 0 20px",fontFamily:C.sans }}>← Back</button>
             {/* Active patient banner */}
             {activePatient && (
-              <div style={{ marginBottom:14, padding:"14px 18px", borderRadius:9, background:C.teal+"18", border:`1.5px solid ${C.teal}60`, display:"flex", gap:14, alignItems:"center" }}>
+              <div style={{ marginBottom:14, padding:"14px 18px", borderRadius:9, background:C.teal+"18", border:`1.5px solid ${C.teal}60`, display:"flex", gap:14, alignItems:"center", flexWrap:"wrap" }}>
                 <div style={{ width:44, height:44, borderRadius:"50%", background:`linear-gradient(135deg,${C.teal},#0080cc)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:700, color:"white", flexShrink:0 }}>{activePatient.initials}</div>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:14, fontWeight:700, color:C.ink, marginBottom:2 }}>{activePatient.name} <span style={{ fontSize:11, color:C.muted, fontWeight:400 }}>· Age {activePatient.age} · {activePatient.gender}</span></div>
+                <div style={{ flex:1, minWidth:200 }}>
+                  <div style={{ fontSize:14, fontWeight:700, color:C.ink, marginBottom:2 }}>{activePatient.name} {activePatient.age && <span style={{ fontSize:11, color:C.muted, fontWeight:400 }}>· Age {activePatient.age} · {activePatient.gender}</span>}</div>
                   <div style={{ fontSize:12, color:C.teal }}>{activePatient.type} — {activePatient.subtype} · Teeth {activePatient.teeth} · {activePatient.files.length} files loaded</div>
                 </div>
                 <button onClick={()=>{clearPatient&&clearPatient();setMode(null);setSystem(null);setSlots([]);setDetection(null);setStep("mode");}} style={{ fontSize:10, color:C.muted, background:"none", border:`1px solid ${C.border}`, borderRadius:5, padding:"5px 10px", cursor:"pointer", fontFamily:C.sans }}>Close patient</button>
+              </div>
+            )}
+
+            {/* Photo gallery */}
+            {activePatient?.photos?.length > 0 && (
+              <div style={{ marginBottom:18, padding:"18px 20px", borderRadius:10, background:C.surface, border:`1px solid ${C.border}` }}>
+                <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14, flexWrap:"wrap" }}>
+                  <span style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, fontWeight:700 }}>📸 CLINICAL PHOTOS</span>
+                  <span style={{ fontSize:12, color:C.muted }}>{activePatient.photos.length} images · {activePatient.photos[0].date}</span>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))", gap:12 }}>
+                  {activePatient.photos.map((photo, idx) => (
+                    <a key={idx} href={`/patient-cases/${photo.file}`} target="_blank" rel="noopener"
+                      style={{ textDecoration:"none", display:"block" }}>
+                      <div style={{ borderRadius:8, overflow:"hidden", background:"#000", border:`1px solid ${C.border}`, cursor:"zoom-in", transition:"all .15s" }}
+                        onMouseEnter={e=>e.currentTarget.style.borderColor=C.teal}
+                        onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
+                        <img src={`/patient-cases/${photo.file}`} alt={photo.label}
+                          style={{ width:"100%", height:150, objectFit:"cover", display:"block" }} />
+                        <div style={{ padding:"10px 12px", background:C.surface2 }}>
+                          <div style={{ fontSize:12, fontWeight:700, color:C.ink, marginBottom:3 }}>{photo.label}</div>
+                          <div style={{ fontSize:10, color:C.muted, lineHeight:1.5 }}>{photo.note}</div>
+                        </div>
+                      </div>
+                    </a>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -968,8 +995,21 @@ function Dashboard({ navigate, setActivePatient, customPatients=[] }) {
   ];
   return (
     <div style={{ flex:1,overflow:"auto",padding:isNarrow?"24px 18px 100px":"40px 48px",background:C.bg,color:C.ink,fontFamily:C.sans }}>
-      <div style={{ fontSize:isNarrow?28:40,fontWeight:800,letterSpacing:"-.03em",marginBottom:10 }}>Dashboard</div>
-      <div style={{ fontSize:isNarrow?15:18,color:C.muted,marginBottom:isNarrow?24:36 }}>Active cases · April 2026</div>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:14, marginBottom:10 }}>
+        <div>
+          <div style={{ fontSize:isNarrow?28:40,fontWeight:800,letterSpacing:"-.03em",marginBottom:10 }}>Dashboard</div>
+          <div style={{ fontSize:isNarrow?15:18,color:C.muted,marginBottom:0 }}>Active cases · April 2026</div>
+        </div>
+        <button onClick={()=>window.dispatchEvent(new CustomEvent('restora:open-new-patient'))}
+          style={{ padding:isNarrow?"14px 20px":"16px 24px", borderRadius:12, fontSize:isNarrow?15:17, fontWeight:700,
+            background:`linear-gradient(135deg, ${C.teal}, #0080cc)`, color:"white", border:"none", cursor:"pointer",
+            display:"flex", alignItems:"center", gap:10, fontFamily:C.sans,
+            boxShadow:`0 6px 24px ${C.teal}50` }}>
+          <span style={{ fontSize:22, lineHeight:1, fontWeight:400 }}>+</span>
+          New Patient
+        </button>
+      </div>
+      <div style={{ marginBottom:isNarrow?24:36 }} />
 
       {/* Stats row */}
       <div style={{ display:"grid",gridTemplateColumns:isNarrow?"repeat(2, 1fr)":"repeat(4, 1fr)",gap:isNarrow?12:18,marginBottom:isNarrow?20:28 }}>

@@ -87,8 +87,23 @@ export default function AIAssistant({ onCreateCase, onModifyCase, navigate }) {
   const [listening, setListening] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [supportsVoice, setSupportsVoice] = useState(false);
+  const [mode, setMode] = useState("general"); // general | new-patient
   const recognitionRef = useRef(null);
   const scrollRef = useRef(null);
+
+  // Listen for the Dashboard "+ New Patient" event
+  useEffect(() => {
+    const onNew = () => {
+      setMode("new-patient");
+      setOpen(true);
+      setMessages([{
+        role: "assistant",
+        text: "New patient intake. Tap the mic or type — tell me the patient's name, age, what teeth you're designing, and any aesthetic direction (feminine, masculine, longer, youthful, etc.)."
+      }]);
+    };
+    window.addEventListener('restora:open-new-patient', onNew);
+    return () => window.removeEventListener('restora:open-new-patient', onNew);
+  }, []);
 
   // Init Web Speech API
   useEffect(() => {
@@ -156,18 +171,20 @@ export default function AIAssistant({ onCreateCase, onModifyCase, navigate }) {
 
   if (!open) {
     return (
-      <button onClick={()=>setOpen(true)}
+      <button onClick={()=>{setOpen(true); setMode("general");}}
         aria-label="Open AI Assistant"
         style={{
           position:"fixed", bottom:20, right:20, zIndex:999,
-          width:64, height:64, borderRadius:"50%",
+          padding:"16px 22px", borderRadius:40,
           background:`linear-gradient(135deg, ${C.teal}, #0080cc)`,
           border:"none", cursor:"pointer",
           boxShadow:`0 8px 32px ${C.teal}80`,
-          display:"flex", alignItems:"center", justifyContent:"center",
-          fontSize:26, color:"white",
+          display:"flex", alignItems:"center", gap:10,
+          fontSize:15, color:"white", fontWeight:700,
+          fontFamily:C.sans,
         }}>
-        ✨
+        <span style={{ fontSize:22 }}>✨</span>
+        <span>Ask AI</span>
       </button>
     );
   }

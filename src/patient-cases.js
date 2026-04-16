@@ -93,6 +93,12 @@ AEP PARAMETERS SET
       { level: "warning",  text: "Youthful vs Golden parameter tension — pick dominant direction" },
       { level: "info",     text: "Facebow transfer mandatory for 10-unit occlusal case" },
     ],
+    photos: [
+      { file: "carrie-photos/smile_full.jpg",           label: "Full Smile",                 type: "smile",      date: "2026-04-08", note: "Pre-op full smile at maximum animated position" },
+      { file: "carrie-photos/smile_with_ref_lines.jpg", label: "Horizontal Plane Reference", type: "analysis",   date: "2026-04-08", note: "Pupillary + commissure + lip lines · assess cant and smile arc" },
+      { file: "carrie-photos/retracted_labeled.jpg",    label: "Retracted — HPC Notes",      type: "retracted",  date: "2026-04-08", note: "HPC: Gp 6 & 1.5mm Coronal · gingival zenith #6 requires 1.5mm coronal repositioning" },
+      { file: "carrie-photos/retracted_full.jpg",       label: "Retracted Full Arch",        type: "retracted",  date: "2026-04-08", note: "Full anterior-to-posterior visibility · both arches visible" },
+    ],
     files: [
       { name: "carrie_pappas_upper_arch.stl", slot: "upper", size: 37888 },
       { name: "carrie_pappas_lower_arch.stl", slot: "lower", size: 37888 },
