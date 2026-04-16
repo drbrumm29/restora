@@ -1,6 +1,7 @@
 import { useState, useReducer, useCallback, useEffect, useRef } from "react";
 import { PATIENTS, loadPatientFiles } from "./src/patient-cases.js";
 import RadiographScreen from "./src/RadiographScreen.jsx";
+import AIAssistant from "./src/AIAssistant.jsx";
 
 // ═══════════════════════════════════════════════════════════════════
 // RESTORA — Complete Integrated App
@@ -949,9 +950,11 @@ function DesignBridge({ navigate, activePatient, clearPatient }) {
 // ══════════════════════════════════════════════════════════════════
 // OTHER SCREENS  (functional stubs with real interactions)
 // ══════════════════════════════════════════════════════════════════
-function Dashboard({ navigate, setActivePatient }) {
+function Dashboard({ navigate, setActivePatient, customPatients=[] }) {
   const colorMap = { teal:C.teal, warn:C.warn, blue:C.blue, purple:C.purple, amber:C.amber };
-  const cases = PATIENTS.map(p => ({ ...p, statusColor: colorMap[p.statusColor] || C.teal }));
+  const allPatients = [...customPatients, ...PATIENTS];
+  const cases = allPatients.map(p => ({ ...p, statusColor: colorMap[p.statusColor] || C.teal }));
+  const isNarrow = typeof window !== 'undefined' && window.innerWidth < 780;
   
   async function openPatient(p) {
     setActivePatient(p);
@@ -964,30 +967,30 @@ function Dashboard({ navigate, setActivePatient }) {
     {label:"Files needed", value:String(cases.filter(c=>c.status==="Files needed").length), sub:"Action required", color:C.warn},
   ];
   return (
-    <div style={{ flex:1,overflow:"auto",padding:"40px 48px",background:C.bg,color:C.ink,fontFamily:C.sans }}>
-      <div style={{ fontSize:40,fontWeight:800,letterSpacing:"-.03em",marginBottom:10 }}>Dashboard</div>
-      <div style={{ fontSize:18,color:C.muted,marginBottom:36 }}>Active cases · April 2026</div>
+    <div style={{ flex:1,overflow:"auto",padding:isNarrow?"24px 18px 100px":"40px 48px",background:C.bg,color:C.ink,fontFamily:C.sans }}>
+      <div style={{ fontSize:isNarrow?28:40,fontWeight:800,letterSpacing:"-.03em",marginBottom:10 }}>Dashboard</div>
+      <div style={{ fontSize:isNarrow?15:18,color:C.muted,marginBottom:isNarrow?24:36 }}>Active cases · April 2026</div>
 
       {/* Stats row */}
-      <div style={{ display:"grid",gridTemplateColumns:"repeat(4, 1fr)",gap:18,marginBottom:28 }}>
+      <div style={{ display:"grid",gridTemplateColumns:isNarrow?"repeat(2, 1fr)":"repeat(4, 1fr)",gap:isNarrow?12:18,marginBottom:isNarrow?20:28 }}>
         {stats.map(s => (
-          <div key={s.label} style={{ padding:26, borderRadius:14, border:`1px solid ${s.color}35`, background:s.color+"0e" }}>
-            <div style={{ fontSize:13, fontFamily:C.font, letterSpacing:2, color:s.color, marginBottom:14, textTransform:"uppercase", fontWeight:700 }}>{s.label}</div>
-            <div style={{ fontSize:44, fontWeight:800, color:C.ink, lineHeight:1, marginBottom:10, fontFamily:C.font }}>{s.value}</div>
-            <div style={{ fontSize:15, color:C.muted }}>{s.sub}</div>
+          <div key={s.label} style={{ padding:isNarrow?18:26, borderRadius:12, border:`1px solid ${s.color}35`, background:s.color+"0e" }}>
+            <div style={{ fontSize:isNarrow?11:13, fontFamily:C.font, letterSpacing:2, color:s.color, marginBottom:isNarrow?10:14, textTransform:"uppercase", fontWeight:700 }}>{s.label}</div>
+            <div style={{ fontSize:isNarrow?32:44, fontWeight:800, color:C.ink, lineHeight:1, marginBottom:8, fontFamily:C.font }}>{s.value}</div>
+            <div style={{ fontSize:isNarrow?12:15, color:C.muted }}>{s.sub}</div>
           </div>
         ))}
       </div>
 
       {/* Quick actions */}
-      <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:18,marginBottom:32 }}>
+      <div style={{ display:"grid",gridTemplateColumns:isNarrow?"1fr":"1fr 1fr 1fr",gap:isNarrow?12:18,marginBottom:isNarrow?24:32 }}>
         {[{label:"New AI Design",desc:"Start a case with AI-guided parameters",icon:"◈",action:"ai-design-guide",color:C.teal},{label:"Design Systems Bridge",desc:"Drop files · auto-route to Mill/Smile/Lab",icon:"✦",action:"design-bridge",color:C.purple},{label:"Export Hub",desc:"Download or send to production",icon:"↑",action:"export",color:C.amber}].map(a=>(
-          <button key={a.label} onClick={()=>navigate(a.action)} style={{ padding:30,borderRadius:14,border:`1.5px solid ${a.color+"55"}`,background:a.color+"10",cursor:"pointer",fontFamily:C.sans,textAlign:"left",transition:"all .15s" }}
+          <button key={a.label} onClick={()=>navigate(a.action)} style={{ padding:isNarrow?22:30,borderRadius:12,border:`1.5px solid ${a.color+"55"}`,background:a.color+"10",cursor:"pointer",fontFamily:C.sans,textAlign:"left",transition:"all .15s" }}
             onMouseEnter={e=>{e.currentTarget.style.background=a.color+"22"; e.currentTarget.style.borderColor=a.color+"80";}}
             onMouseLeave={e=>{e.currentTarget.style.background=a.color+"10"; e.currentTarget.style.borderColor=a.color+"55";}}>
-            <span style={{ fontSize:34,color:a.color,display:"block",marginBottom:16 }}>{a.icon}</span>
-            <div style={{ fontSize:19,fontWeight:700,color:C.ink,marginBottom:8 }}>{a.label}</div>
-            <div style={{ fontSize:15,color:C.muted,lineHeight:1.5 }}>{a.desc}</div>
+            <span style={{ fontSize:isNarrow?28:34,color:a.color,display:"block",marginBottom:12 }}>{a.icon}</span>
+            <div style={{ fontSize:isNarrow?17:19,fontWeight:700,color:C.ink,marginBottom:6 }}>{a.label}</div>
+            <div style={{ fontSize:isNarrow?13:15,color:C.muted,lineHeight:1.5 }}>{a.desc}</div>
           </button>
         ))}
       </div>
@@ -1814,24 +1817,39 @@ function Sidebar({ screen, navigate }) {
   );
 }
 
-function TitleBar({ screen, navigate }) {
+function TitleBar({ screen, navigate, onMenuClick, isMobile }) {
   const def=SCREENS[screen]||{};
   return (
-    <div style={{ height:44,display:"flex",alignItems:"center",padding:"0 16px",gap:12,background:C.surface,borderBottom:`1px solid ${C.border}`,flexShrink:0 }}>
-      <div style={{ display:"flex",gap:5 }}>
-        {["#ef4444","#f59e0b","#22c55e"].map((c,i)=><div key={i} style={{ width:12,height:12,borderRadius:"50%",background:c }} />)}
-      </div>
-      <div style={{ display:"flex",alignItems:"center",gap:8,marginLeft:8 }}>
-        <div style={{ width:24,height:24,borderRadius:7,background:`linear-gradient(135deg,${C.teal},#0080cc)`,display:"flex",alignItems:"center",justifyContent:"center" }}>
-          <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M1.5 10.5C1.5 7 4 2 6 2C8 2 10.5 7 10.5 10.5" stroke="white" strokeWidth="1.8" strokeLinecap="round"/><circle cx="6" cy="10.5" r="1.2" fill="white"/></svg>
+    <div style={{ height:50,display:"flex",alignItems:"center",padding:"0 14px",gap:12,background:C.surface,borderBottom:`1px solid ${C.border}`,flexShrink:0 }}>
+      {isMobile ? (
+        <button onClick={onMenuClick} aria-label="Menu"
+          style={{ width:40, height:40, borderRadius:8, border:"none", background:C.surface2, color:C.ink, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+        </button>
+      ) : (
+        <div style={{ display:"flex",gap:6 }}>
+          {["#ef4444","#f59e0b","#22c55e"].map((c,i)=><div key={i} style={{ width:12,height:12,borderRadius:"50%",background:c }} />)}
         </div>
-        <span style={{ fontSize:14,color:C.ink,fontWeight:600 }}>Re<span style={{ color:C.teal }}>stora</span></span>
+      )}
+      <div style={{ display:"flex",alignItems:"center",gap:8,marginLeft:isMobile?0:8 }}>
+        <div style={{ width:28,height:28,borderRadius:8,background:`linear-gradient(135deg,${C.teal},#0080cc)`,display:"flex",alignItems:"center",justifyContent:"center" }}>
+          <svg width="13" height="13" viewBox="0 0 12 12" fill="none"><path d="M1.5 10.5C1.5 7 4 2 6 2C8 2 10.5 7 10.5 10.5" stroke="white" strokeWidth="1.8" strokeLinecap="round"/><circle cx="6" cy="10.5" r="1.2" fill="white"/></svg>
+        </div>
+        <span style={{ fontSize:16,color:C.ink,fontWeight:700 }}>Re<span style={{ color:C.teal }}>stora</span></span>
       </div>
-      <span style={{ fontSize:12,color:C.light }}>›</span>
-      <span style={{ fontSize:12,fontWeight:600,color:C.ink }}>{def.label||screen}</span>
+      {!isMobile && (
+        <>
+          <span style={{ fontSize:13,color:C.light }}>›</span>
+          <span style={{ fontSize:14,fontWeight:600,color:C.ink }}>{def.label||screen}</span>
+        </>
+      )}
       <div style={{ flex:1 }} />
-      <button onClick={()=>navigate("ai-design-guide")} style={{ display:"flex",alignItems:"center",gap:6,padding:"5px 12px",borderRadius:20,background:C.surface2,border:`1px solid ${C.border}`,fontSize:11,fontFamily:C.font,color:C.teal,cursor:"pointer",letterSpacing:.5 }}>⌘K AI</button>
-      <button style={{ padding:"5px 12px",borderRadius:20,border:`1px solid ${C.border}`,background:"transparent",color:C.muted,fontSize:11,cursor:"pointer",fontFamily:C.sans }}>Share ↗</button>
+      {!isMobile && (
+        <button onClick={()=>navigate("ai-design-guide")} style={{ display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:20,background:C.surface2,border:`1px solid ${C.border}`,fontSize:12,fontFamily:C.font,color:C.teal,cursor:"pointer",letterSpacing:.5 }}>⌘K AI</button>
+      )}
+      {!isMobile && (
+        <button style={{ padding:"6px 14px",borderRadius:20,border:`1px solid ${C.border}`,background:"transparent",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:C.sans }}>Share ↗</button>
+      )}
     </div>
   );
 }
@@ -1842,12 +1860,57 @@ function TitleBar({ screen, navigate }) {
 export default function App() {
   const [screen, setScreen] = useState("dashboard");
   const [activePatient, setActivePatient] = useState(null);
-  const navigate = (s) => setScreen(s);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth < 780);
+  const [customPatients, setCustomPatients] = useState([]);
+
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 780);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+
+  const navigate = (s) => { setScreen(s); if (isMobile) setSidebarOpen(false); };
+
+  // AI assistant handlers
+  const onCreateCase = (caseData) => {
+    const newPatient = {
+      id: `ai-${Date.now()}`,
+      name: caseData.patient_name,
+      initials: caseData.patient_name.split(" ").map(n=>n[0]).join("").slice(0,2).toUpperCase(),
+      teeth: (caseData.teeth || []).map(t=>`#${t}`).join(", "),
+      type: caseData.case_type || "Custom case",
+      subtype: caseData.subtype || "AI-generated",
+      status: "Files needed",
+      statusColor: "warn",
+      route: caseData.case_type?.includes("implant") ? "implant" : "prep",
+      system: caseData.case_type?.includes("implant") ? "lab" : (caseData.teeth?.length > 4 ? "lab" : "mill"),
+      age: caseData.age || null,
+      gender: caseData.gender || null,
+      notes: caseData.notes || "",
+      parameters: caseData.parameters || {},
+      files: [],
+      aiGenerated: true,
+    };
+    setCustomPatients(prev => [newPatient, ...prev]);
+    setActivePatient(newPatient);
+    setTimeout(() => navigate("ai-design-guide"), 600);
+  };
+
+  const onModifyCase = (caseData) => {
+    if (!activePatient) return;
+    const updated = { ...activePatient };
+    if (caseData.parameters) {
+      updated.parameters = { ...(activePatient.parameters || {}), ...caseData.parameters };
+    }
+    if (caseData.notes) updated.notes = `${activePatient.notes || ''}\n\n[AI modification] ${caseData.notes}`.trim();
+    setActivePatient(updated);
+  };
 
   const renderScreen = () => {
     switch(screen) {
-      case "dashboard":       return <Dashboard navigate={navigate} setActivePatient={setActivePatient} />;
-      case "ai-design-guide": return <AIDesignGuide navigate={navigate} />;
+      case "dashboard":       return <Dashboard navigate={navigate} setActivePatient={setActivePatient} customPatients={customPatients} />;
+      case "ai-design-guide": return <AIDesignGuide navigate={navigate} activePatient={activePatient} />;
       case "design-bridge":   return <DesignBridge navigate={navigate} activePatient={activePatient} clearPatient={()=>setActivePatient(null)} />;
       case "restoration-cad": return <RestorationCAD navigate={navigate} />;
       case "smile-sim":       return <SmileSimScreen navigate={navigate} />;
@@ -1868,13 +1931,29 @@ export default function App() {
 
   return (
     <div style={{ width:"100vw",height:"100vh",display:"flex",flexDirection:"column",background:C.bg,color:C.ink,fontFamily:C.sans,overflow:"hidden" }}>
-      <TitleBar screen={screen} navigate={navigate} />
-      <div style={{ flex:1,display:"flex",overflow:"hidden" }}>
-        <Sidebar screen={screen} navigate={navigate} />
-        <main style={{ flex:1,display:"flex",flexDirection:"column",overflow:"hidden" }}>
+      <TitleBar screen={screen} navigate={navigate} onMenuClick={()=>setSidebarOpen(o=>!o)} isMobile={isMobile} />
+      <div style={{ flex:1,display:"flex",overflow:"hidden",position:"relative" }}>
+        {/* Mobile backdrop */}
+        {isMobile && sidebarOpen && (
+          <div onClick={()=>setSidebarOpen(false)}
+            style={{ position:"fixed", inset:0, top:0, background:"rgba(0,0,0,.6)", zIndex:100, backdropFilter:"blur(4px)" }}/>
+        )}
+        {/* Sidebar */}
+        <div style={{
+          position: isMobile ? "fixed" : "relative",
+          top: isMobile ? 0 : "auto",
+          left: 0, bottom: 0, zIndex: 101,
+          height: isMobile ? "100vh" : "auto",
+          transform: isMobile ? (sidebarOpen ? "translateX(0)" : "translateX(-100%)") : "none",
+          transition: "transform .25s ease",
+        }}>
+          <Sidebar screen={screen} navigate={navigate} />
+        </div>
+        <main style={{ flex:1,display:"flex",flexDirection:"column",overflow:"hidden",width:isMobile?"100vw":"auto" }}>
           {renderScreen()}
         </main>
       </div>
+      <AIAssistant onCreateCase={onCreateCase} onModifyCase={onModifyCase} navigate={navigate} />
     </div>
   );
 }

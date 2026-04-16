@@ -2,12 +2,30 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Restora" />
+    <meta name="theme-color" content="#0d1b2e" />
     <title>Restora</title>
     <style>
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-      body { background: #0d1b2e; color: #e8edf4; font-family: system-ui, sans-serif; }
-      #root { width: 100vw; height: 100vh; }
+      html, body { height: 100%; overflow: hidden; }
+      body {
+        background: #0d1b2e;
+        color: #f4f7fb;
+        font-family: system-ui, -apple-system, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -webkit-tap-highlight-color: transparent;
+        overscroll-behavior: none;
+      }
+      #root { width: 100vw; height: 100vh; height: 100dvh; }
+      button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+      input, textarea, select { font-size: 16px; /* prevents iOS zoom */ }
+      /* Hide scrollbar on mobile */
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #2a4060; border-radius: 3px; }
     </style>
   </head>
   <body>
