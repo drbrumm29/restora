@@ -9,7 +9,7 @@ import { useState, useReducer, useCallback, useEffect, useRef } from "react";
 const C = {
   bg:"#0d1b2e", surface:"#132338", surface2:"#1a2f48", surface3:"#213858",
   border:"#2a4060", borderSoft:"#1f3352",
-  ink:"#e8edf4", muted:"#7a9bb5", light:"#3d5a78",
+  ink:"#f4f7fb", muted:"#9db4cc", light:"#5a7a9b",
   teal:"#0abab5", tealDim:"rgba(10,186,181,.1)", tealBorder:"rgba(10,186,181,.3)",
   gold:"#b8860b", goldDim:"rgba(184,134,11,.08)",
   amber:"#d97706", amberDim:"rgba(217,119,6,.08)",
@@ -816,39 +816,59 @@ function DesignBridge({ navigate }) {
 // ══════════════════════════════════════════════════════════════════
 function Dashboard({ navigate }) {
   const cases=[{id:1,name:"Sarah Johnson",teeth:"#8,#9",type:"Cosmetic Anterior",status:"Design ready",statusColor:C.teal},{id:2,name:"Michael Chen",teeth:"#3",type:"Restorative Posterior",status:"Files needed",statusColor:C.warn},{id:3,name:"Emma Davis",teeth:"#30",type:"Single Implant",status:"In progress",statusColor:C.blue}];
+  const stats=[
+    {label:"Active cases", value:"3", sub:"April 2026", color:C.teal},
+    {label:"Designs ready", value:"1", sub:"Awaiting export", color:C.green},
+    {label:"In progress", value:"1", sub:"With lab", color:C.blue},
+    {label:"Files needed", value:"1", sub:"Action required", color:C.warn},
+  ];
   return (
-    <div style={{ flex:1,overflow:"auto",padding:"28px",background:C.bg,color:C.ink,fontFamily:C.sans }}>
-      <div style={{ fontSize:22,fontWeight:700,letterSpacing:"-.03em",marginBottom:6 }}>Dashboard</div>
-      <div style={{ fontSize:13,color:C.muted,marginBottom:28 }}>Active cases · April 2026</div>
+    <div style={{ flex:1,overflow:"auto",padding:"36px 44px",background:C.bg,color:C.ink,fontFamily:C.sans }}>
+      <div style={{ fontSize:32,fontWeight:800,letterSpacing:"-.03em",marginBottom:8 }}>Dashboard</div>
+      <div style={{ fontSize:15,color:C.muted,marginBottom:32 }}>Active cases · April 2026</div>
+
+      {/* Stats row */}
+      <div style={{ display:"grid",gridTemplateColumns:"repeat(4, 1fr)",gap:16,marginBottom:24 }}>
+        {stats.map(s => (
+          <div key={s.label} style={{ padding:22, borderRadius:12, border:`1px solid ${s.color}30`, background:s.color+"0c" }}>
+            <div style={{ fontSize:11, fontFamily:C.font, letterSpacing:2, color:s.color, marginBottom:10, textTransform:"uppercase", fontWeight:700 }}>{s.label}</div>
+            <div style={{ fontSize:36, fontWeight:800, color:C.ink, lineHeight:1, marginBottom:8, fontFamily:C.font }}>{s.value}</div>
+            <div style={{ fontSize:13, color:C.muted }}>{s.sub}</div>
+          </div>
+        ))}
+      </div>
+
       {/* Quick actions */}
-      <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:28 }}>
-        {[{label:"New AI Design",icon:"◈",action:"ai-design-guide",color:C.teal},{label:"Design Systems Bridge",icon:"✦",action:"design-bridge",color:C.purple},{label:"Export Hub",icon:"↑",action:"export",color:C.amber}].map(a=>(
-          <button key={a.label} onClick={()=>navigate(a.action)} style={{ padding:18,borderRadius:10,border:`1px solid ${a.color+"40"}`,background:a.color+"08",cursor:"pointer",fontFamily:C.sans,textAlign:"left",transition:"all .15s" }}
-            onMouseEnter={e=>{e.currentTarget.style.background=a.color+"15";}}
-            onMouseLeave={e=>{e.currentTarget.style.background=a.color+"08";}}>
-            <span style={{ fontSize:20,color:a.color,display:"block",marginBottom:10 }}>{a.icon}</span>
-            <div style={{ fontSize:13,fontWeight:700,color:C.ink }}>{a.label}</div>
+      <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16,marginBottom:28 }}>
+        {[{label:"New AI Design",desc:"Start a case with AI-guided parameters",icon:"◈",action:"ai-design-guide",color:C.teal},{label:"Design Systems Bridge",desc:"Drop files · auto-route to Mill/Smile/Lab",icon:"✦",action:"design-bridge",color:C.purple},{label:"Export Hub",desc:"Download or send to production",icon:"↑",action:"export",color:C.amber}].map(a=>(
+          <button key={a.label} onClick={()=>navigate(a.action)} style={{ padding:26,borderRadius:12,border:`1.5px solid ${a.color+"50"}`,background:a.color+"10",cursor:"pointer",fontFamily:C.sans,textAlign:"left",transition:"all .15s" }}
+            onMouseEnter={e=>{e.currentTarget.style.background=a.color+"22"; e.currentTarget.style.borderColor=a.color+"80";}}
+            onMouseLeave={e=>{e.currentTarget.style.background=a.color+"10"; e.currentTarget.style.borderColor=a.color+"50";}}>
+            <span style={{ fontSize:28,color:a.color,display:"block",marginBottom:14 }}>{a.icon}</span>
+            <div style={{ fontSize:16,fontWeight:700,color:C.ink,marginBottom:6 }}>{a.label}</div>
+            <div style={{ fontSize:13,color:C.muted,lineHeight:1.5 }}>{a.desc}</div>
           </button>
         ))}
       </div>
+
       {/* Cases */}
       <Card>
-        <div style={{ padding:"12px 16px",borderBottom:`1px solid ${C.border}`,fontSize:10,fontFamily:C.font,color:C.muted,letterSpacing:2 }}>ACTIVE CASES</div>
+        <div style={{ padding:"16px 22px",borderBottom:`1px solid ${C.border}`,fontSize:12,fontFamily:C.font,color:C.teal,letterSpacing:2.5,fontWeight:700 }}>ACTIVE CASES</div>
         {cases.map((c,i)=>(
-          <div key={c.id} style={{ padding:"14px 16px",borderBottom:i<cases.length-1?`1px solid ${C.borderSoft}`:"none",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer" }}
+          <div key={c.id} style={{ padding:"20px 22px",borderBottom:i<cases.length-1?`1px solid ${C.borderSoft}`:"none",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",transition:"background .15s" }}
             onClick={()=>navigate("ai-design-guide")}
             onMouseEnter={e=>e.currentTarget.style.background=C.surface2}
             onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-            <div style={{ display:"flex",gap:14,alignItems:"center" }}>
-              <div style={{ width:36,height:36,borderRadius:8,background:`${C.teal}15`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:C.teal }}>
+            <div style={{ display:"flex",gap:18,alignItems:"center" }}>
+              <div style={{ width:44,height:44,borderRadius:10,background:`${C.teal}20`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700,color:C.teal }}>
                 {c.name.split(" ").map(n=>n[0]).join("")}
               </div>
               <div>
-                <div style={{ fontSize:13,fontWeight:600 }}>{c.name}</div>
-                <div style={{ fontSize:11,color:C.muted }}>{c.type} · Teeth {c.teeth}</div>
+                <div style={{ fontSize:16,fontWeight:700,color:C.ink,marginBottom:3 }}>{c.name}</div>
+                <div style={{ fontSize:13,color:C.muted }}>{c.type} · Teeth {c.teeth}</div>
               </div>
             </div>
-            <Tag label={c.status} color={c.statusColor} dim={c.statusColor+"15"} />
+            <Tag label={c.status} color={c.statusColor} dim={c.statusColor+"20"} />
           </div>
         ))}
       </Card>
@@ -1612,33 +1632,35 @@ function Sidebar({ screen, navigate }) {
   const grouped = {};
   Object.entries(SCREENS).forEach(([k,v])=>{ (grouped[v.section]=[...(grouped[v.section]||[]),{k,...v}]); });
   return (
-    <div style={{ width:210,background:C.surface,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",flexShrink:0,overflow:"hidden" }}>
+    <div style={{ width:240,background:C.surface,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",flexShrink:0,overflow:"hidden" }}>
       {/* Patient card */}
-      <div style={{ padding:"12px 12px 8px" }}>
-        <div style={{ padding:"10px 12px",background:C.surface2,borderRadius:8,border:`1px solid ${C.border}`,cursor:"pointer" }} onClick={()=>navigate("dashboard")}>
-          <div style={{ display:"flex",gap:8,alignItems:"center" }}>
-            <div style={{ width:32,height:32,borderRadius:"50%",background:`linear-gradient(135deg,${C.teal},#0080cc)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:"white",flexShrink:0 }}>SJ</div>
+      <div style={{ padding:"14px 14px 10px" }}>
+        <div style={{ padding:"14px 14px",background:C.surface2,borderRadius:10,border:`1px solid ${C.border}`,cursor:"pointer" }} onClick={()=>navigate("dashboard")}>
+          <div style={{ display:"flex",gap:11,alignItems:"center" }}>
+            <div style={{ width:38,height:38,borderRadius:"50%",background:`linear-gradient(135deg,${C.teal},#0080cc)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"white",flexShrink:0 }}>SJ</div>
             <div>
-              <div style={{ fontSize:12,fontWeight:700,color:C.ink }}>Sara Johnson</div>
-              <div style={{ fontSize:10,color:C.teal }}>Cosmetic Anterior · #8,#9</div>
+              <div style={{ fontSize:14,fontWeight:700,color:C.ink,marginBottom:2 }}>Sara Johnson</div>
+              <div style={{ fontSize:11,color:C.teal }}>Cosmetic Anterior · #8,#9</div>
             </div>
           </div>
         </div>
       </div>
       {/* Nav */}
-      <div style={{ flex:1,overflow:"auto",padding:"0 8px 8px" }}>
+      <div style={{ flex:1,overflow:"auto",padding:"0 10px 10px" }}>
         {SECTIONS.map(section=>{
           const items=grouped[section]||[];
           return (
-            <div key={section} style={{ marginBottom:4 }}>
-              <div style={{ fontSize:9,fontFamily:C.font,color:C.light,letterSpacing:2,padding:"8px 8px 4px" }}>{section.toUpperCase()}</div>
+            <div key={section} style={{ marginBottom:6 }}>
+              <div style={{ fontSize:10,fontFamily:C.font,color:C.muted,letterSpacing:2.5,padding:"10px 10px 6px",fontWeight:700 }}>{section.toUpperCase()}</div>
               {items.map(item=>{
                 const active=screen===item.k;
                 return (
                   <button key={item.k} onClick={()=>navigate(item.k)}
-                    style={{ display:"flex",alignItems:"center",gap:8,width:"100%",padding:"8px 10px",borderRadius:6,border:"none",cursor:"pointer",fontFamily:C.sans,transition:"all .15s",background:active?C.tealDim:"transparent",marginBottom:1 }}>
-                    <span style={{ fontSize:13,color:active?C.teal:C.muted,flexShrink:0 }}>{item.icon}</span>
-                    <span style={{ fontSize:12,fontWeight:active?600:400,color:active?C.teal:C.muted,flex:1,textAlign:"left" }}>{item.label}</span>
+                    style={{ display:"flex",alignItems:"center",gap:10,width:"100%",padding:"10px 12px",borderRadius:7,border:"none",cursor:"pointer",fontFamily:C.sans,transition:"all .15s",background:active?C.tealDim:"transparent",marginBottom:2 }}
+                    onMouseEnter={e=>{if(!active)e.currentTarget.style.background=C.surface2;}}
+                    onMouseLeave={e=>{if(!active)e.currentTarget.style.background="transparent";}}>
+                    <span style={{ fontSize:15,color:active?C.teal:C.muted,flexShrink:0 }}>{item.icon}</span>
+                    <span style={{ fontSize:14,fontWeight:active?700:500,color:active?C.teal:C.ink,flex:1,textAlign:"left" }}>{item.label}</span>
                     {item.badge&&<Tag label={item.badge} color={active?C.teal:C.muted} dim={active?C.tealDim:C.surface3} />}
                   </button>
                 );
