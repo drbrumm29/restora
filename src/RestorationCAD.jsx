@@ -254,9 +254,18 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
         else geom.computeVertexNormals();
         // Dental scanner convention: Z-up, Y-front.
         // Three.js convention: Y-up, Z-front.
-        // Rotate -90° on X axis: (x, y, z) -> (x, z, -y)
         geom.rotateX(-Math.PI / 2);
+
+        // For library teeth with placement data: center geometry on its bbox
+        // so the pivot is at tooth center, not at scanner origin
+        if (m.placement) {
+          geom.computeBoundingBox();
+          const c = new THREE.Vector3();
+          geom.boundingBox.getCenter(c);
+          geom.translate(-c.x, -c.y, -c.z);
+        }
         geom.computeBoundingBox();
+
         const mat = new THREE.MeshStandardMaterial({
           color: m.color || 0xe8d8c4,
           roughness: 0.45,
@@ -268,12 +277,33 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
         obj = new THREE.Mesh(geom, mat);
         scene.add(obj);
         meshObjectsRef.current[m.id] = obj;
+
+        // Mark as freshly added for placement handling below
+        obj.userData.isFreshPlacement = true;
       }
       obj.visible = m.visible !== false;
       obj.material.wireframe = wireframe;
       obj.material.color.set(m.id === activeId ? (m.highlightColor || 0x0abab5) : (m.color || 0xe8d8c4));
       obj.material.opacity = m.opacity ?? 1;
       obj.material.transparent = (m.opacity ?? 1) < 1;
+
+      // If this mesh has placement data and the scene is already centered,
+      // position it at the label's world coords (label coords + centerOffset)
+      if (m.placement && obj.userData.isFreshPlacement && rotateRef.current.centerOffset) {
+        const off = rotateRef.current.centerOffset;
+        obj.position.set(
+          m.placement.x + off.x,
+          m.placement.y + off.y + (m.placement.outwardOffset || 0),
+          m.placement.z + off.z
+        );
+        obj.userData.isFreshPlacement = false;
+      } else if (m.slot === 'crown' && obj.userData.isFreshPlacement && rotateRef.current.centerOffset) {
+        // No placement — put unlabeled library teeth at the scene center so they're visible
+        const off = rotateRef.current.centerOffset;
+        obj.position.set(off.x, off.y + 20, off.z);  // 20mm above scene center
+        obj.userData.isFreshPlacement = false;
+      }
+
       if (obj.visible) {
         tmpBox.setFromObject(obj);
         bbox.union(tmpBox);
@@ -281,21 +311,23 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
       }
     });
 
-    // Auto-center + fit first time meshes load
-    if (!bbox.isEmpty() && meshes.length > 0) {
+    // Auto-center + fit ONCE on initial load (don't recenter on visibility toggles)
+    if (meshes.length === 0) {
+      // Reset centering flag so next patient load re-centers
+      rotateRef.current.hasInitialCentered = false;
+      rotateRef.current.centerOffset = null;
+    }
+    if (!bbox.isEmpty() && meshes.length > 0 && !rotateRef.current.hasInitialCentered) {
       const center = new THREE.Vector3(); bbox.getCenter(center);
       const size = new THREE.Vector3(); bbox.getSize(size);
       const maxDim = Math.max(size.x, size.y, size.z);
-      // Re-center meshes
+      // Shift all meshes so scene center is at origin
       Object.values(meshObjectsRef.current).forEach(o => {
         o.position.set(-center.x, -center.y, -center.z);
       });
-      // Track center offset so badges can be placed correctly
       rotateRef.current.centerOffset = { x:-center.x, y:-center.y, z:-center.z };
-      const desiredDist = maxDim * 1.8;
-      if (rotateRef.current.dist === 50 || Math.abs(rotateRef.current.dist - desiredDist) > maxDim) {
-        rotateRef.current.dist = Math.max(10, desiredDist);
-      }
+      rotateRef.current.hasInitialCentered = true;
+      rotateRef.current.dist = Math.max(10, maxDim * 1.8);
     }
 
     onStats?.({ meshCount: meshes.filter(m=>m.visible!==false).length, triCount: totalTris });
@@ -492,16 +524,43 @@ export default function RestorationCAD({ navigate, activePatient }) {
       const resp = await fetch(`/libraries/${libId}/${fileName}`);
       const buf = await resp.arrayBuffer();
       const { positions, normals, triCount } = parseSTL(buf);
+
+      // Determine placement: if there's a labeled target tooth that doesn't
+      // have a library tooth yet, snap this one to that label's position.
+      const placedAt = meshes
+        .filter(m => m.slot === 'crown' && m.toothNum)
+        .map(m => m.toothNum);
+      const candidate = targetTeeth.find(n =>
+        !placedAt.includes(n) &&
+        toothLabels.find(l => l.num === n)
+      );
+      const labelForTooth = candidate ? toothLabels.find(l => l.num === candidate) : null;
+
       const id = `lib-${libId}-${fileName}-${Date.now()}`;
       setMeshes(ms => [...ms, {
-        id, name: fileName, slot: 'crown',
-        label: `${libId} · ${fileName}`,
+        id,
+        name: fileName,
+        slot: 'crown',
+        toothNum: candidate || null,
+        label: candidate ? `#${candidate} · ${fileName.replace('.stl','')}` : `${libId} · ${fileName}`,
         positions, normals, triCount,
         color: FILE_COLORS.crown, highlightColor: 0x0abab5,
         visible: true, opacity: 0.85,
+        // If we have a target label, store the placement so the viewer positions it there
+        placement: labelForTooth ? {
+          x: labelForTooth.x,
+          y: labelForTooth.y,
+          z: labelForTooth.z,
+          // offset outward from arch to sit on facial surface rather than buried inside
+          outwardOffset: 0.5,
+        } : null,
       }]);
       setActive(id);
       setShowLib(false);
+      if (candidate) {
+        // Notify user
+        console.log(`Library tooth placed at labeled position #${candidate}`);
+      }
     } finally {
       setLoading(false);
     }
