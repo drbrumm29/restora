@@ -8,6 +8,7 @@ import ImplantPlanningNew from "./src/ImplantPlanning.jsx";
 import ExportHubNew from "./src/ExportHub.jsx";
 import FullArchNew from "./src/FullArchScreen.jsx";
 import ToothLibraryBrowserNew from "./src/ToothLibraryBrowser.jsx";
+import SmileCreatorNew from "./src/SmileCreator.jsx";
 
 // ═══════════════════════════════════════════════════════════════════
 // RESTORA — Complete Integrated App
@@ -36,6 +37,7 @@ const SCREENS = {
   "ai-design-guide":  { label:"AI Design Guide",  icon:"◈", section:"Start", badge:"New" },
   "design-bridge":    { label:"Design Systems",   icon:"✦", section:"Design", badge:"3 Systems" },
   "restoration-cad":  { label:"Restoration CAD",  icon:"✏️", section:"Design" },
+  "smile-creator":    { label:"Smile Creator",    icon:"😊", section:"Design", badge:"2D" },
   "smile-sim":        { label:"Smile Simulation", icon:"◉", section:"Design" },
   "implant-plan":     { label:"Implant Planning", icon:"◆", section:"Planning" },
   "radiograph":       { label:"X-ray Analysis",   icon:"⚡", section:"Planning", badge:"AI" },
@@ -1477,6 +1479,7 @@ export default function App() {
       case "ai-design-guide": return <AIDesignGuide navigate={navigate} activePatient={activePatient} />;
       case "design-bridge":   return <DesignBridge navigate={navigate} activePatient={activePatient} clearPatient={()=>setActivePatient(null)} />;
       case "restoration-cad": return <RestorationCADNew navigate={navigate} activePatient={activePatient} />;
+      case "smile-creator":   return <SmileCreatorNew navigate={navigate} activePatient={activePatient} />;
       case "smile-sim":       return <SmileSimulationNew navigate={navigate} activePatient={activePatient} />;
       case "implant-plan":    return <ImplantPlanningNew navigate={navigate} activePatient={activePatient} />;
       case "radiograph":      return <RadiographScreen />;
