@@ -240,7 +240,33 @@ function ResultDisplay({ result }) {
 
       {/* Dentition */}
       <Section title="DENTITION" color={C.teal}>
-        <div style={{ fontSize:12, color:C.ink, lineHeight:1.6 }}>{result.teeth_present}</div>
+        {result.visible_teeth_inventory ? (
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            {result.visible_teeth_inventory.visible?.length > 0 && (
+              <div>
+                <div style={{ fontSize:10, color:C.muted, letterSpacing:1, marginBottom:4, fontFamily:C.font, fontWeight:700 }}>VISIBLE IN IMAGE</div>
+                <div style={{ fontSize:13, color:C.ink, fontFamily:C.font }}>{result.visible_teeth_inventory.visible.join(", ")}</div>
+              </div>
+            )}
+            {result.visible_teeth_inventory.missing_extracted?.length > 0 && (
+              <div>
+                <div style={{ fontSize:10, color:C.red, letterSpacing:1, marginBottom:4, fontFamily:C.font, fontWeight:700 }}>MISSING / EXTRACTED</div>
+                <div style={{ fontSize:13, color:C.ink, fontFamily:C.font }}>{result.visible_teeth_inventory.missing_extracted.join(", ")}</div>
+              </div>
+            )}
+            {result.visible_teeth_inventory.not_captured?.length > 0 && (
+              <div>
+                <div style={{ fontSize:10, color:C.muted, letterSpacing:1, marginBottom:4, fontFamily:C.font, fontWeight:700 }}>NOT CAPTURED (outside image)</div>
+                <div style={{ fontSize:13, color:C.muted, fontFamily:C.font }}>{result.visible_teeth_inventory.not_captured.join(", ")}</div>
+              </div>
+            )}
+            {result.visible_teeth_inventory.note && (
+              <div style={{ fontSize:10, color:C.light, fontStyle:"italic", marginTop:4 }}>{result.visible_teeth_inventory.note}</div>
+            )}
+          </div>
+        ) : (
+          <div style={{ fontSize:12, color:C.ink, lineHeight:1.6 }}>{result.teeth_present}</div>
+        )}
       </Section>
 
       {/* Implants */}
@@ -262,9 +288,16 @@ function ResultDisplay({ result }) {
       {hasRestor && (
         <Section title="EXISTING RESTORATIONS" color={C.blue}>
           {result.existing_restorations.map((r, i) => (
-            <div key={i} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 12px", background:C.surface2, borderRadius:6, marginBottom:6, fontSize:12 }}>
-              <div><strong style={{ color:C.blue, fontFamily:C.font, marginRight:12 }}>{r.tooth}</strong><span style={{ color:C.ink, textTransform:"capitalize" }}>{r.type?.replace('-',' ')}</span></div>
-              <ConfidenceBadge level={r.confidence} />
+            <div key={i} style={{ padding:"10px 12px", background:C.surface2, borderRadius:6, marginBottom:6, fontSize:12 }}>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                <div>
+                  <strong style={{ color:C.blue, fontFamily:C.font, marginRight:12 }}>{r.tooth}</strong>
+                  <span style={{ color:C.ink, textTransform:"capitalize" }}>{r.type?.replace(/-/g,' ')}</span>
+                  {r.surfaces && <span style={{ color:C.muted, fontFamily:C.font, marginLeft:8, fontSize:11 }}>{r.surfaces}</span>}
+                </div>
+                <ConfidenceBadge level={r.confidence} />
+              </div>
+              {r.reasoning && <div style={{ fontSize:10, color:C.muted, marginTop:4, fontStyle:"italic", lineHeight:1.5 }}>{r.reasoning}</div>}
             </div>
           ))}
         </Section>
