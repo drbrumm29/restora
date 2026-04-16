@@ -84,11 +84,13 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats 
     renderer.setSize(w, h);
     mount.appendChild(renderer.domElement);
 
-    const amb = new THREE.AmbientLight(0xffffff, 0.45);
-    const dir1 = new THREE.DirectionalLight(0xffffff, 0.85); dir1.position.set(30, 40, 30);
-    const dir2 = new THREE.DirectionalLight(0xbfdfff, 0.35); dir2.position.set(-30, -20, 20);
-    const dir3 = new THREE.DirectionalLight(0xffd8a8, 0.2);  dir3.position.set(0, 20, -30);
-    scene.add(amb, dir1, dir2, dir3);
+    const amb = new THREE.AmbientLight(0xffffff, 0.55);
+    const dir1 = new THREE.DirectionalLight(0xffffff, 1.0); dir1.position.set(30, 40, 30);
+    const dir2 = new THREE.DirectionalLight(0xcfe8ff, 0.45); dir2.position.set(-30, -20, 20);
+    const dir3 = new THREE.DirectionalLight(0xffe8cc, 0.3);  dir3.position.set(0, 20, -30);
+    // Hemisphere fill — simulates diffuse ambient light typical in dental operatory
+    const hemi = new THREE.HemisphereLight(0xf4f0e8, 0x1a1a2a, 0.4);
+    scene.add(amb, dir1, dir2, dir3, hemi);
 
     // Grid + axes for orientation
     const grid = new THREE.GridHelper(100, 20, 0x264060, 0x1a2f48);
@@ -206,10 +208,11 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats 
         geom.computeBoundingBox();
         const mat = new THREE.MeshStandardMaterial({
           color: m.color || 0xe8d8c4,
-          roughness: 0.35,
-          metalness: 0.05,
+          roughness: 0.45,
+          metalness: 0.02,
           flatShading: false,
           wireframe,
+          side: THREE.DoubleSide,
         });
         obj = new THREE.Mesh(geom, mat);
         scene.add(obj);
@@ -250,11 +253,11 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats 
 
 // ── Main screen ──────────────────────────────────────────────────
 const FILE_COLORS = {
-  upper: 0xf0d8b8,   // warm ivory
-  lower: 0xe8cfa8,   // slightly darker ivory
-  prep:  0xd4a868,   // tan (preps)
+  upper: 0xf0e4d0,   // natural tooth + gingiva tone (warm cream)
+  lower: 0xece0cc,   // slightly cooler for visual separation
+  prep:  0xd4a868,   // tan (preps — die-stone color)
   prep2: 0xd4a868,
-  bite:  0x8090a0,   // blue-grey (bite reg)
+  bite:  0x7a8898,   // blue-grey (bite reg — scanner bite scan)
   crown: 0x0abab5,   // teal (proposed restoration)
 };
 

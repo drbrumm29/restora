@@ -62,6 +62,8 @@ cases/
 # Exception: public tooth library assets (not patient data)
 !public/libraries/**/*.stl
 !public/libraries/**/*.eoff
+# Exception: demo patient scans in the app (consent on file)
+!public/patient-cases/**/*.stl
 
 # API keys — NEVER commit
 secrets/
