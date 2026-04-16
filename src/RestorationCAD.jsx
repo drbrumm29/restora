@@ -496,6 +496,19 @@ export default function RestorationCAD({ navigate, activePatient }) {
     ));
   }, [shade]);
 
+  // Pick up any queued tooth from ToothLibraryBrowser's "Use This Tooth" button
+  useEffect(() => {
+    const queued = sessionStorage.getItem('restora-queued-tooth');
+    if (!queued) return;
+    try {
+      const { libId, fileName } = JSON.parse(queued);
+      sessionStorage.removeItem('restora-queued-tooth');
+      // Wait for patient meshes to finish loading first
+      const tryAdd = setTimeout(() => addLibraryTooth(libId, fileName), 800);
+      return () => clearTimeout(tryAdd);
+    } catch {}
+  }, [patient?.id]);
+
   // Load patient files into viewer
   useEffect(() => {
     if (!patient) return;

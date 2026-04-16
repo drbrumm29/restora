@@ -7,6 +7,7 @@ import SmileSimulationNew from "./src/SmileSimulation.jsx";
 import ImplantPlanningNew from "./src/ImplantPlanning.jsx";
 import ExportHubNew from "./src/ExportHub.jsx";
 import FullArchNew from "./src/FullArchScreen.jsx";
+import ToothLibraryBrowserNew from "./src/ToothLibraryBrowser.jsx";
 
 // ═══════════════════════════════════════════════════════════════════
 // RESTORA — Complete Integrated App
@@ -1481,7 +1482,7 @@ export default function App() {
       case "radiograph":      return <RadiographScreen />;
       case "full-arch":       return <FullArchNew navigate={navigate} activePatient={activePatient} />;
       case "export":          return <ExportHubNew navigate={navigate} activePatient={activePatient} />;
-      case "tooth-library":   return <ToothLibScreen />;
+      case "tooth-library":   return <ToothLibraryBrowserNew navigate={navigate} activePatient={activePatient} />;
       default: return (
         <div style={{ flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,color:C.muted }}>
           <div style={{ fontSize:28 }}>◈</div>
