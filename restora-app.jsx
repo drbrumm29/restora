@@ -53,8 +53,8 @@ const Btn = ({ children, onClick, variant="primary", disabled=false, style={} })
 };
 
 const Tag = ({ label, color=C.teal, dim=C.tealDim }) => (
-  <span style={{ padding:"2px 7px", borderRadius:3, fontSize:9, fontWeight:700,
-    letterSpacing:.8, background:dim, color, border:`1px solid ${color}25`,
+  <span style={{ padding:"6px 12px", borderRadius:5, fontSize:13, fontWeight:700,
+    letterSpacing:.5, background:dim, color, border:`1px solid ${color}40`,
     fontFamily:C.font }}>
     {label}
   </span>
@@ -964,52 +964,52 @@ function Dashboard({ navigate, setActivePatient }) {
     {label:"Files needed", value:String(cases.filter(c=>c.status==="Files needed").length), sub:"Action required", color:C.warn},
   ];
   return (
-    <div style={{ flex:1,overflow:"auto",padding:"36px 44px",background:C.bg,color:C.ink,fontFamily:C.sans }}>
-      <div style={{ fontSize:32,fontWeight:800,letterSpacing:"-.03em",marginBottom:8 }}>Dashboard</div>
-      <div style={{ fontSize:15,color:C.muted,marginBottom:32 }}>Active cases · April 2026</div>
+    <div style={{ flex:1,overflow:"auto",padding:"40px 48px",background:C.bg,color:C.ink,fontFamily:C.sans }}>
+      <div style={{ fontSize:40,fontWeight:800,letterSpacing:"-.03em",marginBottom:10 }}>Dashboard</div>
+      <div style={{ fontSize:18,color:C.muted,marginBottom:36 }}>Active cases · April 2026</div>
 
       {/* Stats row */}
-      <div style={{ display:"grid",gridTemplateColumns:"repeat(4, 1fr)",gap:16,marginBottom:24 }}>
+      <div style={{ display:"grid",gridTemplateColumns:"repeat(4, 1fr)",gap:18,marginBottom:28 }}>
         {stats.map(s => (
-          <div key={s.label} style={{ padding:22, borderRadius:12, border:`1px solid ${s.color}30`, background:s.color+"0c" }}>
-            <div style={{ fontSize:11, fontFamily:C.font, letterSpacing:2, color:s.color, marginBottom:10, textTransform:"uppercase", fontWeight:700 }}>{s.label}</div>
-            <div style={{ fontSize:36, fontWeight:800, color:C.ink, lineHeight:1, marginBottom:8, fontFamily:C.font }}>{s.value}</div>
-            <div style={{ fontSize:13, color:C.muted }}>{s.sub}</div>
+          <div key={s.label} style={{ padding:26, borderRadius:14, border:`1px solid ${s.color}35`, background:s.color+"0e" }}>
+            <div style={{ fontSize:13, fontFamily:C.font, letterSpacing:2, color:s.color, marginBottom:14, textTransform:"uppercase", fontWeight:700 }}>{s.label}</div>
+            <div style={{ fontSize:44, fontWeight:800, color:C.ink, lineHeight:1, marginBottom:10, fontFamily:C.font }}>{s.value}</div>
+            <div style={{ fontSize:15, color:C.muted }}>{s.sub}</div>
           </div>
         ))}
       </div>
 
       {/* Quick actions */}
-      <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16,marginBottom:28 }}>
+      <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:18,marginBottom:32 }}>
         {[{label:"New AI Design",desc:"Start a case with AI-guided parameters",icon:"◈",action:"ai-design-guide",color:C.teal},{label:"Design Systems Bridge",desc:"Drop files · auto-route to Mill/Smile/Lab",icon:"✦",action:"design-bridge",color:C.purple},{label:"Export Hub",desc:"Download or send to production",icon:"↑",action:"export",color:C.amber}].map(a=>(
-          <button key={a.label} onClick={()=>navigate(a.action)} style={{ padding:26,borderRadius:12,border:`1.5px solid ${a.color+"50"}`,background:a.color+"10",cursor:"pointer",fontFamily:C.sans,textAlign:"left",transition:"all .15s" }}
+          <button key={a.label} onClick={()=>navigate(a.action)} style={{ padding:30,borderRadius:14,border:`1.5px solid ${a.color+"55"}`,background:a.color+"10",cursor:"pointer",fontFamily:C.sans,textAlign:"left",transition:"all .15s" }}
             onMouseEnter={e=>{e.currentTarget.style.background=a.color+"22"; e.currentTarget.style.borderColor=a.color+"80";}}
-            onMouseLeave={e=>{e.currentTarget.style.background=a.color+"10"; e.currentTarget.style.borderColor=a.color+"50";}}>
-            <span style={{ fontSize:28,color:a.color,display:"block",marginBottom:14 }}>{a.icon}</span>
-            <div style={{ fontSize:16,fontWeight:700,color:C.ink,marginBottom:6 }}>{a.label}</div>
-            <div style={{ fontSize:13,color:C.muted,lineHeight:1.5 }}>{a.desc}</div>
+            onMouseLeave={e=>{e.currentTarget.style.background=a.color+"10"; e.currentTarget.style.borderColor=a.color+"55";}}>
+            <span style={{ fontSize:34,color:a.color,display:"block",marginBottom:16 }}>{a.icon}</span>
+            <div style={{ fontSize:19,fontWeight:700,color:C.ink,marginBottom:8 }}>{a.label}</div>
+            <div style={{ fontSize:15,color:C.muted,lineHeight:1.5 }}>{a.desc}</div>
           </button>
         ))}
       </div>
 
       {/* Cases */}
       <Card>
-        <div style={{ padding:"16px 22px",borderBottom:`1px solid ${C.border}`,fontSize:12,fontFamily:C.font,color:C.teal,letterSpacing:2.5,fontWeight:700 }}>ACTIVE CASES</div>
+        <div style={{ padding:"20px 26px",borderBottom:`1px solid ${C.border}`,fontSize:14,fontFamily:C.font,color:C.teal,letterSpacing:2.5,fontWeight:700 }}>ACTIVE CASES</div>
         {cases.map((c,i)=>(
-          <div key={c.id} style={{ padding:"20px 22px",borderBottom:i<cases.length-1?`1px solid ${C.borderSoft}`:"none",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",transition:"background .15s" }}
+          <div key={c.id} style={{ padding:"24px 26px",borderBottom:i<cases.length-1?`1px solid ${C.borderSoft}`:"none",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",transition:"background .15s" }}
             onClick={()=>openPatient(c)}
             onMouseEnter={e=>e.currentTarget.style.background=C.surface2}
             onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-            <div style={{ display:"flex",gap:18,alignItems:"center" }}>
-              <div style={{ width:44,height:44,borderRadius:10,background:`${C.teal}20`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700,color:C.teal }}>
+            <div style={{ display:"flex",gap:20,alignItems:"center" }}>
+              <div style={{ width:52,height:52,borderRadius:12,background:`${C.teal}25`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:700,color:C.teal }}>
                 {c.name.split(" ").map(n=>n[0]).join("")}
               </div>
               <div>
-                <div style={{ fontSize:16,fontWeight:700,color:C.ink,marginBottom:3 }}>{c.name}</div>
-                <div style={{ fontSize:13,color:C.muted }}>{c.type} · Teeth {c.teeth}</div>
+                <div style={{ fontSize:19,fontWeight:700,color:C.ink,marginBottom:5 }}>{c.name}</div>
+                <div style={{ fontSize:15,color:C.muted }}>{c.type} · Teeth {c.teeth}</div>
               </div>
             </div>
-            <Tag label={c.status} color={c.statusColor} dim={c.statusColor+"20"} />
+            <Tag label={c.status} color={c.statusColor} dim={c.statusColor+"22"} />
           </div>
         ))}
       </Card>
@@ -1773,35 +1773,35 @@ function Sidebar({ screen, navigate }) {
   const grouped = {};
   Object.entries(SCREENS).forEach(([k,v])=>{ (grouped[v.section]=[...(grouped[v.section]||[]),{k,...v}]); });
   return (
-    <div style={{ width:240,background:C.surface,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",flexShrink:0,overflow:"hidden" }}>
+    <div style={{ width:270,background:C.surface,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",flexShrink:0,overflow:"hidden" }}>
       {/* Patient card */}
-      <div style={{ padding:"14px 14px 10px" }}>
-        <div style={{ padding:"14px 14px",background:C.surface2,borderRadius:10,border:`1px solid ${C.border}`,cursor:"pointer" }} onClick={()=>navigate("dashboard")}>
-          <div style={{ display:"flex",gap:11,alignItems:"center" }}>
-            <div style={{ width:38,height:38,borderRadius:"50%",background:`linear-gradient(135deg,${C.teal},#0080cc)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"white",flexShrink:0 }}>SJ</div>
+      <div style={{ padding:"16px 16px 12px" }}>
+        <div style={{ padding:"16px",background:C.surface2,borderRadius:10,border:`1px solid ${C.border}`,cursor:"pointer" }} onClick={()=>navigate("dashboard")}>
+          <div style={{ display:"flex",gap:13,alignItems:"center" }}>
+            <div style={{ width:44,height:44,borderRadius:"50%",background:`linear-gradient(135deg,${C.teal},#0080cc)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:700,color:"white",flexShrink:0 }}>SJ</div>
             <div>
-              <div style={{ fontSize:14,fontWeight:700,color:C.ink,marginBottom:2 }}>Sara Johnson</div>
-              <div style={{ fontSize:11,color:C.teal }}>Cosmetic Anterior · #8,#9</div>
+              <div style={{ fontSize:16,fontWeight:700,color:C.ink,marginBottom:3 }}>Sara Johnson</div>
+              <div style={{ fontSize:12,color:C.teal }}>Cosmetic Anterior · #8,#9</div>
             </div>
           </div>
         </div>
       </div>
       {/* Nav */}
-      <div style={{ flex:1,overflow:"auto",padding:"0 10px 10px" }}>
+      <div style={{ flex:1,overflow:"auto",padding:"0 12px 12px" }}>
         {SECTIONS.map(section=>{
           const items=grouped[section]||[];
           return (
-            <div key={section} style={{ marginBottom:6 }}>
-              <div style={{ fontSize:10,fontFamily:C.font,color:C.muted,letterSpacing:2.5,padding:"10px 10px 6px",fontWeight:700 }}>{section.toUpperCase()}</div>
+            <div key={section} style={{ marginBottom:8 }}>
+              <div style={{ fontSize:11,fontFamily:C.font,color:C.muted,letterSpacing:2.5,padding:"12px 12px 8px",fontWeight:700 }}>{section.toUpperCase()}</div>
               {items.map(item=>{
                 const active=screen===item.k;
                 return (
                   <button key={item.k} onClick={()=>navigate(item.k)}
-                    style={{ display:"flex",alignItems:"center",gap:10,width:"100%",padding:"10px 12px",borderRadius:7,border:"none",cursor:"pointer",fontFamily:C.sans,transition:"all .15s",background:active?C.tealDim:"transparent",marginBottom:2 }}
+                    style={{ display:"flex",alignItems:"center",gap:12,width:"100%",padding:"12px 14px",borderRadius:8,border:"none",cursor:"pointer",fontFamily:C.sans,transition:"all .15s",background:active?C.tealDim:"transparent",marginBottom:3 }}
                     onMouseEnter={e=>{if(!active)e.currentTarget.style.background=C.surface2;}}
                     onMouseLeave={e=>{if(!active)e.currentTarget.style.background="transparent";}}>
-                    <span style={{ fontSize:15,color:active?C.teal:C.muted,flexShrink:0 }}>{item.icon}</span>
-                    <span style={{ fontSize:14,fontWeight:active?700:500,color:active?C.teal:C.ink,flex:1,textAlign:"left" }}>{item.label}</span>
+                    <span style={{ fontSize:17,color:active?C.teal:C.muted,flexShrink:0 }}>{item.icon}</span>
+                    <span style={{ fontSize:16,fontWeight:active?700:500,color:active?C.teal:C.ink,flex:1,textAlign:"left" }}>{item.label}</span>
                     {item.badge&&<Tag label={item.badge} color={active?C.teal:C.muted} dim={active?C.tealDim:C.surface3} />}
                   </button>
                 );
