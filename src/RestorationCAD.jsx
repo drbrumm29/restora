@@ -256,9 +256,9 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
         // Three.js convention: Y-up, Z-front.
         geom.rotateX(-Math.PI / 2);
 
-        // For library teeth with placement data: center geometry on its bbox
-        // so the pivot is at tooth center, not at scanner origin
-        if (m.placement) {
+        // For library teeth (crown slot): center geometry on its own bbox
+        // so the pivot is at tooth center. This makes rotate/scale feel natural.
+        if (m.slot === 'crown') {
           geom.computeBoundingBox();
           const c = new THREE.Vector3();
           geom.boundingBox.getCenter(c);
@@ -277,9 +277,7 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
         obj = new THREE.Mesh(geom, mat);
         scene.add(obj);
         meshObjectsRef.current[m.id] = obj;
-
-        // Mark as freshly added for placement handling below
-        obj.userData.isFreshPlacement = true;
+        obj.userData.isFresh = true;
       }
       obj.visible = m.visible !== false;
       obj.material.wireframe = wireframe;
@@ -287,21 +285,21 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
       obj.material.opacity = m.opacity ?? 1;
       obj.material.transparent = (m.opacity ?? 1) < 1;
 
-      // If this mesh has placement data and the scene is already centered,
-      // position it at the label's world coords (label coords + centerOffset)
-      if (m.placement && obj.userData.isFreshPlacement && rotateRef.current.centerOffset) {
+      // For library teeth (crown): apply transform
+      if (m.slot === 'crown' && rotateRef.current.centerOffset) {
         const off = rotateRef.current.centerOffset;
-        obj.position.set(
-          m.placement.x + off.x,
-          m.placement.y + off.y + (m.placement.outwardOffset || 0),
-          m.placement.z + off.z
+        const t = m.transform || { tx:0, ty:0, tz:0, rx:0, ry:0, rz:0, scale:1 };
+        // Position: scene center + user translation
+        obj.position.set(off.x + t.tx, off.y + 15 + t.ty, off.z + t.tz);
+        // Rotation: user-specified degrees → radians
+        obj.rotation.set(
+          (t.rx || 0) * Math.PI / 180,
+          (t.ry || 0) * Math.PI / 180,
+          (t.rz || 0) * Math.PI / 180,
         );
-        obj.userData.isFreshPlacement = false;
-      } else if (m.slot === 'crown' && obj.userData.isFreshPlacement && rotateRef.current.centerOffset) {
-        // No placement — put unlabeled library teeth at the scene center so they're visible
-        const off = rotateRef.current.centerOffset;
-        obj.position.set(off.x, off.y + 20, off.z);  // 20mm above scene center
-        obj.userData.isFreshPlacement = false;
+        // Scale
+        obj.scale.setScalar(t.scale || 1);
+        obj.userData.isFresh = false;
       }
 
       if (obj.visible) {
@@ -428,6 +426,15 @@ const FILE_COLORS = {
   crown: 0x0abab5,   // teal (proposed restoration)
 };
 
+// VITA + Bleach shade → hex (approximate tooth shade colors)
+const SHADE_HEX = {
+  "BL1":  0xfdfcf7, "BL2":  0xfbf9f0, "BL3":  0xf9f5e8, "BL4":  0xf7f1df,
+  "A1":   0xf5ead0, "A2":   0xf0e0b8, "A3":   0xe8d4a0, "A3.5": 0xe0c888, "A4": 0xd4b870,
+  "B1":   0xf8ecd0, "B2":   0xf2deb8, "B3":   0xeacfa0,
+  "C1":   0xe8d8b8, "C2":   0xddc8a0,
+  "eMax LT": 0xf4ead0, "eMax MT": 0xf4ead0, "eMax HT": 0xfbf5e8,
+};
+
 export default function RestorationCAD({ navigate, activePatient }) {
   const [meshes, setMeshes]   = useState([]);
   const [loading, setLoading] = useState(false);
@@ -481,6 +488,14 @@ export default function RestorationCAD({ navigate, activePatient }) {
     } catch {}
   }, [toothLabels, patient?.id]);
 
+  // Update library teeth color when shade changes
+  useEffect(() => {
+    const newColor = SHADE_HEX[shade] ?? SHADE_HEX.A1;
+    setMeshes(ms => ms.map(m =>
+      m.slot === 'crown' ? { ...m, color: newColor } : m
+    ));
+  }, [shade]);
+
   // Load patient files into viewer
   useEffect(() => {
     if (!patient) return;
@@ -524,46 +539,36 @@ export default function RestorationCAD({ navigate, activePatient }) {
       const resp = await fetch(`/libraries/${libId}/${fileName}`);
       const buf = await resp.arrayBuffer();
       const { positions, normals, triCount } = parseSTL(buf);
-
-      // Determine placement: if there's a labeled target tooth that doesn't
-      // have a library tooth yet, snap this one to that label's position.
-      const placedAt = meshes
-        .filter(m => m.slot === 'crown' && m.toothNum)
-        .map(m => m.toothNum);
-      const candidate = targetTeeth.find(n =>
-        !placedAt.includes(n) &&
-        toothLabels.find(l => l.num === n)
-      );
-      const labelForTooth = candidate ? toothLabels.find(l => l.num === candidate) : null;
-
       const id = `lib-${libId}-${fileName}-${Date.now()}`;
       setMeshes(ms => [...ms, {
         id,
         name: fileName,
         slot: 'crown',
-        toothNum: candidate || null,
-        label: candidate ? `#${candidate} · ${fileName.replace('.stl','')}` : `${libId} · ${fileName}`,
+        label: `${libId} · ${fileName.replace('.stl','')}`,
         positions, normals, triCount,
-        color: FILE_COLORS.crown, highlightColor: 0x0abab5,
-        visible: true, opacity: 0.85,
-        // If we have a target label, store the placement so the viewer positions it there
-        placement: labelForTooth ? {
-          x: labelForTooth.x,
-          y: labelForTooth.y,
-          z: labelForTooth.z,
-          // offset outward from arch to sit on facial surface rather than buried inside
-          outwardOffset: 0.5,
-        } : null,
+        color: SHADE_HEX[shade] ?? SHADE_HEX.A1,   // use selected shade color
+        highlightColor: 0x0abab5,
+        visible: true,
+        opacity: 1,
+        // Transform — user adjusts these via gizmo panel
+        transform: {
+          tx: 0, ty: 0, tz: 0,          // translation (mm)
+          rx: 0, ry: 0, rz: 0,          // rotation (degrees)
+          scale: 1,                      // uniform scale
+        },
       }]);
       setActive(id);
       setShowLib(false);
-      if (candidate) {
-        // Notify user
-        console.log(`Library tooth placed at labeled position #${candidate}`);
-      }
     } finally {
       setLoading(false);
     }
+  }
+
+  // Update transform of selected library tooth
+  function updateTransform(id, patch) {
+    setMeshes(ms => ms.map(m =>
+      m.id === id ? { ...m, transform: { ...m.transform, ...patch } } : m
+    ));
   }
 
   // Auto-generate tooth numbers: user places 2 anchor labels (leftmost + rightmost
@@ -927,12 +932,67 @@ export default function RestorationCAD({ navigate, activePatient }) {
                     </button>
                   </div>
                   {isActive && (
-                    <div style={{ padding:"6px 0 4px 28px" }}>
+                    <div style={{ padding:"8px 0 6px 28px" }}>
                       <div style={{ fontSize:14, color:C.ink, marginBottom:5, letterSpacing:1, fontFamily:C.font, fontWeight:700 }}>OPACITY</div>
                       <input type="range" min={0} max={1} step={0.05} value={m.opacity ?? 1}
                         onChange={e=>setOpacity(m.id, +e.target.value)}
                         onClick={e=>e.stopPropagation()}
                         style={{ width:"100%", accentColor:C.teal }}/>
+
+                      {/* Transform gizmos — only for library teeth */}
+                      {m.slot === 'crown' && m.transform && (
+                        <div onClick={e=>e.stopPropagation()} style={{ marginTop:14 }}>
+                          <div style={{ fontSize:14, color:C.amber, marginBottom:8, letterSpacing:1, fontFamily:C.font, fontWeight:700 }}>POSITION (mm)</div>
+                          {[
+                            { key:'tx', label:'← / → (L-R)',    color:'#ef4444', min:-30, max:30 },
+                            { key:'ty', label:'↑ / ↓ (vertical)', color:'#10b981', min:-30, max:30 },
+                            { key:'tz', label:'⇠ / ⇢ (depth)',   color:'#3b82f6', min:-30, max:30 },
+                          ].map(ax => (
+                            <div key={ax.key} style={{ marginBottom:8 }}>
+                              <div style={{ display:"flex", justifyContent:"space-between", fontSize:13, color:C.ink, marginBottom:3 }}>
+                                <span style={{ color:ax.color, fontWeight:700 }}>{ax.label}</span>
+                                <span style={{ fontFamily:C.font, color:C.ink }}>{(m.transform[ax.key] || 0).toFixed(1)}</span>
+                              </div>
+                              <input type="range" min={ax.min} max={ax.max} step={0.25} value={m.transform[ax.key] || 0}
+                                onChange={e=>updateTransform(m.id, { [ax.key]: +e.target.value })}
+                                style={{ width:"100%", accentColor: ax.color }}/>
+                            </div>
+                          ))}
+
+                          <div style={{ fontSize:14, color:C.amber, marginTop:12, marginBottom:8, letterSpacing:1, fontFamily:C.font, fontWeight:700 }}>ROTATION (°)</div>
+                          {[
+                            { key:'rx', label:'pitch (X)', color:'#ef4444' },
+                            { key:'ry', label:'yaw (Y)',   color:'#10b981' },
+                            { key:'rz', label:'roll (Z)',  color:'#3b82f6' },
+                          ].map(ax => (
+                            <div key={ax.key} style={{ marginBottom:8 }}>
+                              <div style={{ display:"flex", justifyContent:"space-between", fontSize:13, color:C.ink, marginBottom:3 }}>
+                                <span style={{ color:ax.color, fontWeight:700 }}>{ax.label}</span>
+                                <span style={{ fontFamily:C.font, color:C.ink }}>{(m.transform[ax.key] || 0).toFixed(0)}°</span>
+                              </div>
+                              <input type="range" min={-180} max={180} step={1} value={m.transform[ax.key] || 0}
+                                onChange={e=>updateTransform(m.id, { [ax.key]: +e.target.value })}
+                                style={{ width:"100%", accentColor: ax.color }}/>
+                            </div>
+                          ))}
+
+                          <div style={{ fontSize:14, color:C.amber, marginTop:12, marginBottom:8, letterSpacing:1, fontFamily:C.font, fontWeight:700 }}>SCALE</div>
+                          <div style={{ display:"flex", justifyContent:"space-between", fontSize:13, color:C.ink, marginBottom:3 }}>
+                            <span style={{ color:C.teal, fontWeight:700 }}>uniform</span>
+                            <span style={{ fontFamily:C.font, color:C.ink }}>{(m.transform.scale || 1).toFixed(2)}×</span>
+                          </div>
+                          <input type="range" min={0.3} max={3} step={0.05} value={m.transform.scale || 1}
+                            onChange={e=>updateTransform(m.id, { scale: +e.target.value })}
+                            style={{ width:"100%", accentColor:C.teal }}/>
+
+                          <div style={{ display:"flex", gap:8, marginTop:12 }}>
+                            <button onClick={()=>updateTransform(m.id, { tx:0, ty:0, tz:0, rx:0, ry:0, rz:0, scale:1 })}
+                              style={{ flex:1, padding:"10px", borderRadius:6, background:C.surface2, border:`1px solid ${C.border}`, color:C.ink, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:C.sans }}>↺ Reset</button>
+                            <button onClick={()=>setMeshes(ms => ms.filter(mm => mm.id !== m.id))}
+                              style={{ flex:1, padding:"10px", borderRadius:6, background:C.red+"20", border:`1px solid ${C.red}60`, color:C.red, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:C.sans }}>✕ Delete</button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
