@@ -2,6 +2,7 @@ import { useState, useReducer, useCallback, useEffect, useRef } from "react";
 import { PATIENTS, loadPatientFiles } from "./src/patient-cases.js";
 import RadiographScreen from "./src/RadiographScreen.jsx";
 import AIAssistant from "./src/AIAssistant.jsx";
+import RestorationCADNew from "./src/RestorationCAD.jsx";
 
 // ═══════════════════════════════════════════════════════════════════
 // RESTORA — Complete Integrated App
@@ -1957,7 +1958,7 @@ export default function App() {
       case "dashboard":       return <Dashboard navigate={navigate} setActivePatient={setActivePatient} customPatients={customPatients} />;
       case "ai-design-guide": return <AIDesignGuide navigate={navigate} activePatient={activePatient} />;
       case "design-bridge":   return <DesignBridge navigate={navigate} activePatient={activePatient} clearPatient={()=>setActivePatient(null)} />;
-      case "restoration-cad": return <RestorationCAD navigate={navigate} />;
+      case "restoration-cad": return <RestorationCADNew activePatient={activePatient} />;
       case "smile-sim":       return <SmileSimScreen navigate={navigate} />;
       case "implant-plan":    return <ImplantPlanScreen navigate={navigate} />;
       case "radiograph":      return <RadiographScreen />;
