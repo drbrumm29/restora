@@ -5,20 +5,20 @@ import { useState, useReducer, useCallback, useEffect, useRef } from "react";
 // AI Design Guide · Design Systems Bridge · All Clinical Screens
 // ═══════════════════════════════════════════════════════════════════
 
-// ── Design tokens ──────────────────────────────────────────────────
+// ── Design tokens — Tiffany Blue light theme ───────────────────────
 const C = {
-  bg:"#0a0d12", surface:"#111318", surface2:"#181d24", surface3:"#1f252e",
-  border:"#252c36", borderSoft:"#1a2029",
-  ink:"#e8edf4", muted:"#7a8594", light:"#3d4654",
-  teal:"#00b48a", tealDim:"rgba(0,180,138,.1)", tealBorder:"rgba(0,180,138,.2)",
-  gold:"#d4a843", goldDim:"rgba(212,168,67,.08)",
-  amber:"#f0883e", amberDim:"rgba(240,136,62,.08)",
-  purple:"#a78bfa", purpleDim:"rgba(167,139,250,.08)",
-  blue:"#3b82f6", blueDim:"rgba(59,130,246,.08)",
-  red:"#ef4444", green:"#22c55e", warn:"#f59e0b",
+  bg:"#f0fbfa", surface:"#ffffff", surface2:"#e8f8f7", surface3:"#d4f0ee",
+  border:"#b2e0dd", borderSoft:"#ccecea",
+  ink:"#0d2b2a", muted:"#4a7674", light:"#7aaeac",
+  teal:"#0abab5", tealDim:"rgba(10,186,181,.1)", tealBorder:"rgba(10,186,181,.3)",
+  gold:"#b8860b", goldDim:"rgba(184,134,11,.08)",
+  amber:"#d97706", amberDim:"rgba(217,119,6,.08)",
+  purple:"#7c3aed", purpleDim:"rgba(124,58,237,.08)",
+  blue:"#0891b2", blueDim:"rgba(8,145,178,.08)",
+  red:"#dc2626", green:"#059669", warn:"#d97706",
   font:"'DM Mono','JetBrains Mono',monospace",
   sans:"system-ui,-apple-system,sans-serif",
-  shadow:"0 1px 3px rgba(0,0,0,.4),0 4px 16px rgba(0,0,0,.3)",
+  shadow:"0 1px 3px rgba(10,186,181,.08),0 4px 16px rgba(10,186,181,.12)",
 };
 
 // ── Navigation screens ─────────────────────────────────────────────
