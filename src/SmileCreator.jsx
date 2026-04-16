@@ -191,8 +191,9 @@ export default function SmileCreator({ navigate, activePatient }) {
   useEffect(() => {
     if (!activePatient) return;
     // Use retracted_full.jpg from Carrie's photo folder as default
-    const defaultPhoto = `/patient-cases/${activePatient.id === 'pappas' ? 'carrie-photos/retracted_full.jpg' : ''}`;
-    if (defaultPhoto) setPhotoUrl(defaultPhoto);
+    if (activePatient.id === 'carrie-pappas') {
+      setPhotoUrl('/patient-cases/carrie-photos/retracted_full.jpg');
+    }
   }, [activePatient]);
 
   // Load image when URL changes
@@ -405,6 +406,25 @@ export default function SmileCreator({ navigate, activePatient }) {
       }
     }
 
+    // Draw in-progress placement dots (clicks 1 and 2 of 3, while placing smile curve)
+    if (step === 2 && !smileCurve && placementBuffer.length > 0 && transform) {
+      placementBuffer.forEach((pt, i) => {
+        const cp = imageToCanvas(pt.x, pt.y);
+        ctx.fillStyle = i === 1 ? C.amber : C.teal;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(cp.x, cp.y, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = "bold 11px " + C.font;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(i === 1 ? 'M' : (i === 0 ? 'L' : 'R'), cp.x, cp.y);
+      });
+    }
+
     // Draw teeth
     if (teeth.length > 0 && !showBefore) {
       teeth.forEach(tooth => {
@@ -448,7 +468,7 @@ export default function SmileCreator({ navigate, activePatient }) {
         ctx.restore();
       });
     }
-  }, [canvasDim, transform, smileCurve, teeth, selectedTooth, shade, showPhoto, showBefore, step]);
+  }, [canvasDim, transform, smileCurve, teeth, selectedTooth, shade, showPhoto, showBefore, step, placementBuffer]);
 
   // ── Mouse/touch handlers ──────────────────────────────────────
   const getCanvasPoint = (e) => {
@@ -498,17 +518,14 @@ export default function SmileCreator({ navigate, activePatient }) {
 
     // Step 2: placing smile curve
     if (step === 2 && !smileCurve) {
-      // Start placement — accumulate 3 clicks
-      if (!placementBuffer.current) placementBuffer.current = [];
       const imgPt = canvasToImage(cx, cy);
-      placementBuffer.current.push(imgPt);
-      if (placementBuffer.current.length === 3) {
-        const [a, b, c] = placementBuffer.current;
+      const newBuffer = [...placementBuffer, imgPt];
+      if (newBuffer.length === 3) {
+        const [a, b, c] = newBuffer;
         setSmileCurve({ p0: a, p1: b, p2: c });
-        placementBuffer.current = null;
+        setPlacementBuffer([]);
       } else {
-        // trigger re-render to show intermediate dots
-        setPlacementTick(t => t + 1);
+        setPlacementBuffer(newBuffer);
       }
       return;
     }
@@ -562,8 +579,7 @@ export default function SmileCreator({ navigate, activePatient }) {
   };
 
   // Placement buffer for 3-click smile curve placement
-  const placementBuffer = useRef(null);
-  const [placementTick, setPlacementTick] = useState(0);
+  const [placementBuffer, setPlacementBuffer] = useState([]);
 
   // Mouse cursor style
   const cursor = useMemo(() => {
@@ -578,7 +594,7 @@ export default function SmileCreator({ navigate, activePatient }) {
     setTeeth([]);
     setSelectedTooth(null);
     setStep(2);
-    placementBuffer.current = null;
+    setPlacementBuffer([]);
   };
 
   const handleKeyDown = useCallback((e) => {
@@ -617,7 +633,7 @@ export default function SmileCreator({ navigate, activePatient }) {
               Smile Creator <span style={{ fontSize: 12, padding: "3px 9px", borderRadius: 4, background: C.tealDim, color: C.teal, fontFamily: C.font, marginLeft: 8, letterSpacing: 1, fontWeight: 700, verticalAlign: "middle" }}>2D</span>
             </div>
             <div style={{ fontSize: 13, color: C.muted, marginTop: 3 }}>
-              {activePatient.name} · {activePatient.type} · #{activePatient.targetTeeth?.[0] || '4'}-#{activePatient.targetTeeth?.slice(-1)[0] || '13'}
+              {activePatient.name} · {activePatient.type || 'Case'}{activePatient.teeth ? ` · ${activePatient.teeth}` : ''}
             </div>
           </div>
 
@@ -661,9 +677,9 @@ export default function SmileCreator({ navigate, activePatient }) {
             onTouchEnd={handleMouseUp}
           />
           {/* Placement progress dots (while clicking the 3 curve points) */}
-          {step === 2 && placementBuffer.current && placementBuffer.current.length > 0 && transform && (
+          {step === 2 && placementBuffer.length > 0 && transform && (
             <div style={{ position: "absolute", top: 64, left: 20, padding: "10px 14px", background: C.surface, border: `1px solid ${C.tealBorder}`, borderRadius: 8, fontSize: 13, color: C.teal, fontFamily: C.font }}>
-              {placementBuffer.current.length} of 3 points placed. Next: {['LEFT commissure','MIDLINE','RIGHT commissure'][placementBuffer.current.length]}
+              {placementBuffer.length} of 3 points placed. Next: {['LEFT commissure','MIDLINE','RIGHT commissure'][placementBuffer.length]}
             </div>
           )}
           {/* Before/After toggle */}

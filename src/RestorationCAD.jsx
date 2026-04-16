@@ -866,17 +866,15 @@ export default function RestorationCAD({ navigate, activePatient }) {
       {/* Header bar */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 22px", borderBottom:`1px solid ${C.border}`, gap:14, flexWrap:"wrap", flexShrink:0 }}>
         <div>
-          <div style={{ fontSize:22, fontWeight:800, letterSpacing:"-.02em" }}>Restoration CAD</div>
-          <div style={{ fontSize:16, color:C.ink, marginTop:3 }}>
+          <div style={{ fontSize:22, fontWeight:800, letterSpacing:"-.02em" }}>Restoration CAD <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 4, background: C.tealDim, color: C.teal, fontFamily: C.font, marginLeft: 8, letterSpacing: 1, fontWeight: 700, verticalAlign: "middle" }}>3D SCAN VIEWER</span></div>
+          <div style={{ fontSize:15, color:C.muted, marginTop:3 }}>
             {patient?.name ? `${patient.name} · ${patient.teeth}` : "No patient loaded"} · {stats.meshCount} mesh · {stats.triCount.toLocaleString()} tris
           </div>
         </div>
-        <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
-          <button onClick={()=>setShowLib(s=>!s)} style={{ padding:"10px 16px", borderRadius:8, background:C.purple+"20", color:C.purple, border:`1px solid ${C.purple}50`, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:C.sans }}>＋ Add Library Tooth</button>
-          <button onClick={()=>setLabelMode(m=>!m)} style={{ padding:"10px 16px", borderRadius:8, background:labelMode?C.teal:C.surface2, color:labelMode?"white":C.ink, border:`1px solid ${labelMode?C.teal:C.border}`, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:C.sans }}>{labelMode?"✓ Labeling":"🏷 Label Teeth"}</button>
-          <button onClick={autoNumberTeeth} disabled={toothLabels.length < 2} style={{ padding:"10px 16px", borderRadius:8, background:toothLabels.length >= 2 ? C.amber+"20" : C.surface2, color:toothLabels.length >= 2 ? C.amber : C.muted, border:`1px solid ${toothLabels.length >= 2 ? C.amber+"60" : C.border}`, fontSize:14, fontWeight:700, cursor: toothLabels.length >= 2 ? "pointer" : "not-allowed", fontFamily:C.sans }} title="Label at least 2 teeth (like #4 and #13), then click to auto-fill the numbers between them">✨ Auto-Number</button>
+        <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"center" }}>
+          <button onClick={()=>navigate && navigate('smile-creator')} style={{ padding:"10px 16px", borderRadius:8, background:`linear-gradient(135deg, ${C.teal}, ${C.purple})`, color:"white", border:"none", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:C.sans, boxShadow:`0 3px 12px ${C.teal}50` }}>😊 Design in Smile Creator →</button>
           <button onClick={()=>setWire(w=>!w)} style={{ padding:"10px 16px", borderRadius:8, background:wireframe?C.tealDim:C.surface2, color:wireframe?C.teal:C.muted, border:`1px solid ${wireframe?C.tealBorder:C.border}`, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:C.sans }}>{wireframe?"✓ Wireframe":"Wireframe"}</button>
-          <button onClick={exportDesign} disabled={meshes.length===0} style={{ padding:"10px 16px", borderRadius:8, background:meshes.length?C.teal:C.surface2, color:meshes.length?"white":C.muted, border:"none", fontSize:14, fontWeight:700, cursor:meshes.length?"pointer":"not-allowed", fontFamily:C.sans }}>⬇ Export Design STL</button>
+          <button onClick={exportDesign} disabled={meshes.length===0} style={{ padding:"10px 16px", borderRadius:8, background:meshes.length?C.teal:C.surface2, color:meshes.length?"white":C.muted, border:"none", fontSize:14, fontWeight:700, cursor:meshes.length?"pointer":"not-allowed", fontFamily:C.sans }}>⬇ Export Scan STL</button>
         </div>
       </div>
 
@@ -1077,8 +1075,8 @@ export default function RestorationCAD({ navigate, activePatient }) {
 
           {/* Mesh list */}
           <div style={{ flex:1, overflow:"auto" }}>
-            {/* Tooth labels section */}
-            {(toothLabels.length > 0 || targetTeeth.length > 0) && (
+            {/* Tooth labels panel removed — design workflow now lives in Smile Creator (2D) */}
+            {false && (toothLabels.length > 0 || targetTeeth.length > 0) && (
               <>
                 <div style={{ padding:"16px 20px 8px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                   <div style={{ fontSize:16, fontFamily:C.font, color:C.teal, letterSpacing:2, fontWeight:700 }}>
