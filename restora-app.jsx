@@ -40,9 +40,9 @@ const SCREENS = {
 
 // ── Shared atoms ───────────────────────────────────────────────────
 const Btn = ({ children, onClick, variant="primary", disabled=false, style={} }) => {
-  const base = { padding:"10px 18px", borderRadius:6, fontSize:12, fontWeight:700,
+  const base = { padding:"14px 24px", borderRadius:8, fontSize:15, fontWeight:700,
     cursor:disabled?"not-allowed":"pointer", fontFamily:C.sans, border:"none",
-    transition:"all .15s", letterSpacing:.3, ...style };
+    transition:"all .15s", letterSpacing:.3, minHeight:46, ...style };
   const v = {
     primary:{ background:disabled?C.border:C.teal, color:disabled?C.muted:"white",
       boxShadow:disabled?"none":"0 4px 12px rgba(0,180,138,.25)" },
@@ -129,37 +129,37 @@ const IMPL_P = [
 ];
 
 function ParamCtrl({ p, val, set }) {
-  const s = { width:"100%", padding:"7px 10px", borderRadius:5, border:`1px solid ${C.border}`,
-    background:C.surface2, color:C.ink, fontSize:12, fontFamily:C.sans, outline:"none" };
+  const s = { width:"100%", padding:"12px 14px", borderRadius:8, border:`1px solid ${C.border}`,
+    background:C.surface2, color:C.ink, fontSize:15, fontFamily:C.sans, outline:"none", minHeight:46 };
   if (p.type==="select") return (
     <select value={val} onChange={e=>set(e.target.value)} style={s}>
       {p.options.map(o=><option key={o}>{o}</option>)}
     </select>
   );
   if (p.type==="range") return (
-    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+    <div style={{ display:"flex", alignItems:"center", gap:14 }}>
       <input type="range" min={p.min} max={p.max} step={p.step} value={val}
-        onChange={e=>set(parseFloat(e.target.value))} style={{ flex:1, accentColor:C.teal }} />
-      <span style={{ fontSize:12, fontFamily:C.font, color:C.teal, minWidth:44, textAlign:"right" }}>{val}{p.unit}</span>
+        onChange={e=>set(parseFloat(e.target.value))} style={{ flex:1, accentColor:C.teal, height:6 }} />
+      <span style={{ fontSize:15, fontFamily:C.font, color:C.teal, minWidth:60, textAlign:"right", fontWeight:700 }}>{val}{p.unit}</span>
     </div>
   );
   if (p.type==="toggle") return (
-    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-      <div onClick={()=>set(!val)} style={{ width:38, height:20, borderRadius:10, cursor:"pointer", position:"relative",
+    <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+      <div onClick={()=>set(!val)} style={{ width:48, height:26, borderRadius:13, cursor:"pointer", position:"relative",
         background:val?C.teal:C.surface3, border:`1px solid ${val?C.teal:C.border}`, transition:"all .2s" }}>
-        <div style={{ position:"absolute", top:2, left:val?20:2, width:14, height:14, borderRadius:7, background:"white", transition:"left .2s" }} />
+        <div style={{ position:"absolute", top:2, left:val?24:2, width:20, height:20, borderRadius:10, background:"white", transition:"left .2s" }} />
       </div>
-      <span style={{ fontSize:11, color:val?C.teal:C.muted }}>{val?"Yes":"No"}</span>
+      <span style={{ fontSize:14, color:val?C.teal:C.muted, fontWeight:600 }}>{val?"Yes":"No"}</span>
     </div>
   );
   if (p.type==="multi") {
     const sel = Array.isArray(val) ? val : [];
     return (
-      <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+      <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
         {p.options.map(o=>{
           const on=sel.includes(o);
           return <button key={o} onClick={()=>set(on?sel.filter(s=>s!==o):[...sel,o])}
-            style={{ padding:"4px 10px", borderRadius:4, fontSize:11, cursor:"pointer", fontFamily:C.sans,
+            style={{ padding:"8px 14px", borderRadius:6, fontSize:14, cursor:"pointer", fontFamily:C.sans, fontWeight:600,
               border:`1px solid ${on?C.teal:C.border}`, background:on?C.tealDim:"transparent", color:on?C.teal:C.muted }}>{o}</button>;
         })}
       </div>
@@ -227,51 +227,51 @@ Respond ONLY valid JSON no preamble:
   return (
     <div style={{ flex:1, overflow:"auto", background:C.bg, color:C.ink, fontFamily:C.sans }}>
       {/* Header strip */}
-      <div style={{ padding:"14px 28px 0", display:"flex", alignItems:"center", gap:10, borderBottom:`1px solid ${C.border}`, paddingBottom:14 }}>
-        <span style={{ fontSize:10, fontFamily:C.font, color:C.teal, letterSpacing:3 }}>AI DESIGN GUIDE</span>
+      <div style={{ padding:"18px 24px 0", display:"flex", alignItems:"center", gap:12, borderBottom:`1px solid ${C.border}`, paddingBottom:16, flexWrap:"wrap" }}>
+        <span style={{ fontSize:13, fontFamily:C.font, color:C.teal, letterSpacing:3, fontWeight:700 }}>AI DESIGN GUIDE</span>
         {ct&&<Tag label={ct.label.toUpperCase()} color={ct.color} dim={ct.dim} />}
-        <div style={{ flex:1 }} />
+        <div style={{ flex:1, minWidth:20 }} />
         {/* Breadcrumb */}
         {["Case","Parameters","AI Brief","Suite"].map((s,i)=>{
           const si=["case","params","brief","suite"].indexOf(step==="generating"?"params":step);
           const done=i<si, active=i===si;
-          return <div key={s} style={{ display:"flex",alignItems:"center",gap:5 }}>
-            <span style={{ fontSize:9,fontFamily:C.font,padding:"2px 8px",borderRadius:3,
+          return <div key={s} style={{ display:"flex",alignItems:"center",gap:6 }}>
+            <span style={{ fontSize:12,fontFamily:C.font,padding:"5px 11px",borderRadius:5,fontWeight:700,
               background:active?C.teal:done?C.tealDim:"transparent",
               color:active?"white":done?C.teal:C.light,
               border:`1px solid ${active?C.teal:done?C.tealBorder:C.border}` }}>
               {done?"✓ ":""}{s}
             </span>
-            {i<3&&<span style={{ fontSize:9,color:C.light }}>›</span>}
+            {i<3&&<span style={{ fontSize:12,color:C.light }}>›</span>}
           </div>;
         })}
-        {step!=="case"&&<Btn onClick={()=>{setStep("case");setCaseType(null);setBrief(null);}} variant="ghost" style={{ marginLeft:8, padding:"4px 12px",fontSize:10 }}>↺ Reset</Btn>}
+        {step!=="case"&&<Btn onClick={()=>{setStep("case");setCaseType(null);setBrief(null);}} variant="ghost" style={{ marginLeft:8, padding:"7px 14px",fontSize:13 }}>↺ Reset</Btn>}
       </div>
 
-      <div style={{ padding:"32px 28px", maxWidth:880, margin:"0 auto" }}>
+      <div style={{ padding:"36px 24px 100px", maxWidth:920, margin:"0 auto" }}>
 
         {/* ── CASE TYPE ── */}
         {step==="case"&&(
           <div>
             <div style={{ textAlign:"center", marginBottom:36 }}>
-              <div style={{ fontSize:22,fontWeight:700,letterSpacing:"-.03em",marginBottom:8 }}>What type of case are you designing?</div>
-              <div style={{ fontSize:13,color:C.muted }}>Select a case type to load the Restora AEP + technique manual parameter set.</div>
+              <div style={{ fontSize:30,fontWeight:800,letterSpacing:"-.03em",marginBottom:12, lineHeight:1.2 }}>What type of case are you designing?</div>
+              <div style={{ fontSize:16,color:C.muted, lineHeight:1.5 }}>Select a case type to load the Restora AEP + technique manual parameter set.</div>
             </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))", gap:16 }}>
               {Object.entries(CASE_TYPES).map(([k,def])=>(
                 <button key={k} onClick={()=>selectCase(k)}
-                  style={{ textAlign:"left",padding:22,borderRadius:10,cursor:"pointer",border:`1px solid ${C.border}`,
+                  style={{ textAlign:"left",padding:26,borderRadius:12,cursor:"pointer",border:`1.5px solid ${C.border}`,
                     background:C.surface,fontFamily:C.sans,transition:"all .15s",boxShadow:C.shadow }}
                   onMouseEnter={e=>{e.currentTarget.style.borderColor=def.color;e.currentTarget.style.background=def.dim;}}
                   onMouseLeave={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.background=C.surface;}}>
-                  <div style={{ display:"flex",justifyContent:"space-between",marginBottom:12 }}>
-                    <span style={{ fontSize:20,color:def.color }}>{def.icon}</span>
-                    <div style={{ display:"flex",gap:4,flexWrap:"wrap" }}>
-                      {def.systems.map(s=><span key={s} style={{ fontSize:9,padding:"2px 6px",borderRadius:3,background:C.surface2,color:C.muted,fontFamily:C.font }}>{s}</span>)}
+                  <div style={{ display:"flex",justifyContent:"space-between",marginBottom:16, alignItems:"flex-start", gap:10 }}>
+                    <span style={{ fontSize:28,color:def.color }}>{def.icon}</span>
+                    <div style={{ display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end" }}>
+                      {def.systems.map(s=><span key={s} style={{ fontSize:11,padding:"4px 9px",borderRadius:5,background:C.surface2,color:C.muted,fontFamily:C.font,fontWeight:600,letterSpacing:.3 }}>{s}</span>)}
                     </div>
                   </div>
-                  <div style={{ fontSize:14,fontWeight:700,marginBottom:3,color:C.ink }}>{def.label}</div>
-                  <div style={{ fontSize:11,color:def.color,marginBottom:8,fontStyle:"italic" }}>{def.sub}</div>
+                  <div style={{ fontSize:19,fontWeight:700,marginBottom:6,color:C.ink, lineHeight:1.3 }}>{def.label}</div>
+                  <div style={{ fontSize:14,color:def.color,fontStyle:"italic", lineHeight:1.5 }}>{def.sub}</div>
                 </button>
               ))}
             </div>
