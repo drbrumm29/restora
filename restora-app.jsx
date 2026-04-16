@@ -1062,66 +1062,6 @@ function Dashboard({ navigate, setActivePatient, customPatients=[] }) {
   );
 }
 
-function RestorationCAD({ navigate }) {
-  const [restType,setRest]=useState("crown"), [material,setMat]=useState("Pressed lithium disilicate"), [shade,setShade]=useState("A1"), [sent,setSent]=useState(false);
-  return (
-    <div style={{ flex:1,overflow:"auto",padding:28,background:C.bg,color:C.ink,fontFamily:C.sans }}>
-      <div style={{ fontSize:20,fontWeight:700,marginBottom:20 }}>Restoration CAD</div>
-      <div style={{ display:"grid",gridTemplateColumns:"1fr 300px",gap:20 }}>
-        {/* Viewport */}
-        <Card style={{ padding:0,overflow:"hidden",minHeight:420 }}>
-          <div style={{ padding:"10px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",gap:8,alignItems:"center" }}>
-            <Tag label="3D VIEWPORT" color={C.teal} dim={C.tealDim} />
-            {["Front","Top","3/4","Occlusal"].map(v=><button key={v} onClick={()=>{}} style={{ padding:"3px 8px",borderRadius:4,fontSize:10,border:`1px solid ${C.border}`,background:"transparent",color:C.muted,cursor:"pointer",fontFamily:C.sans }}>{v}</button>)}
-          </div>
-          <div style={{ height:380,display:"flex",alignItems:"center",justifyContent:"center",background:"#06090e",position:"relative" }}>
-            <div style={{ textAlign:"center" }}>
-              <div style={{ width:80,height:100,margin:"0 auto 16px",borderRadius:"40% 40% 35% 35%",background:"linear-gradient(160deg,#f5f0e8,#e8e0d0)",boxShadow:"0 8px 32px rgba(0,0,0,.5),inset 0 2px 8px rgba(255,255,255,.3)" }} />
-              <div style={{ fontSize:11,color:C.muted }}>Crown form — {restType}</div>
-              <div style={{ fontSize:10,color:C.light,marginTop:4 }}>{material} · {shade}</div>
-            </div>
-            <div style={{ position:"absolute",bottom:12,right:12,display:"flex",gap:6 }}>
-              {["Margin","Contacts","Occlusion"].map(t=><button key={t} onClick={()=>{}} style={{ padding:"4px 9px",borderRadius:4,fontSize:10,border:`1px solid ${C.border}`,background:C.surface,color:C.muted,cursor:"pointer",fontFamily:C.sans }}>{t}</button>)}
-            </div>
-          </div>
-        </Card>
-        {/* Controls */}
-        <div style={{ display:"flex",flexDirection:"column",gap:12 }}>
-          <Card style={{ padding:14 }}>
-            <SectionHead label="Restoration Type" />
-            {["crown","veneer","onlay","inlay","bridge"].map(r=>(
-              <button key={r} onClick={()=>setRest(r)} style={{ display:"block",width:"100%",padding:"8px 12px",borderRadius:5,border:`1px solid ${restType===r?C.teal:C.border}`,background:restType===r?C.tealDim:"transparent",color:restType===r?C.teal:C.muted,cursor:"pointer",fontFamily:C.sans,textAlign:"left",fontSize:12,marginBottom:5,textTransform:"capitalize" }}>{r}</button>
-            ))}
-          </Card>
-          <Card style={{ padding:14 }}>
-            <SectionHead label="Material" />
-            <select value={material} onChange={e=>setMat(e.target.value)} style={{ width:"100%",padding:"7px 10px",borderRadius:5,border:`1px solid ${C.border}`,background:C.surface2,color:C.ink,fontSize:12,fontFamily:C.sans,outline:"none" }}>
-              {["Pressed lithium disilicate","Milled lithium disilicate","Zirconia HT","Cast gold"].map(m=><option key={m}>{m}</option>)}
-            </select>
-          </Card>
-          <Card style={{ padding:14 }}>
-            <SectionHead label="Shade" />
-            <div style={{ display:"flex",flexWrap:"wrap",gap:6 }}>
-              {["BL1","BL2","A1","A2","A3","B1"].map(s=>(
-                <button key={s} onClick={()=>setShade(s)} style={{ padding:"5px 10px",borderRadius:4,fontSize:11,border:`1px solid ${shade===s?C.teal:C.border}`,background:shade===s?C.tealDim:"transparent",color:shade===s?C.teal:C.muted,cursor:"pointer",fontFamily:C.sans }}>{s}</button>
-              ))}
-            </div>
-          </Card>
-          {sent?(
-            <div style={{ padding:14,borderRadius:8,background:"rgba(34,197,94,.08)",border:"1px solid rgba(34,197,94,.2)",textAlign:"center" }}>
-              <div style={{ fontSize:18,marginBottom:6 }}>✓</div>
-              <div style={{ fontSize:12,fontWeight:700,color:C.green }}>Sent to Export Hub</div>
-            </div>
-          ):(
-            <Btn onClick={()=>setSent(true)} style={{ padding:"12px 18px" }}>Approve & Send →</Btn>
-          )}
-          <Btn onClick={()=>navigate("design-bridge")} variant="secondary" style={{ padding:"10px 18px",fontSize:11 }}>Open Design Bridge ↗</Btn>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function SmileSimScreen({ navigate }) {
   const [shade,setShade]=useState("A1"), [trans,setTrans]=useState(40), [spec,setSpec]=useState(60), [approved,setApproved]=useState(false);
   return (
@@ -1958,7 +1898,7 @@ export default function App() {
       case "dashboard":       return <Dashboard navigate={navigate} setActivePatient={setActivePatient} customPatients={customPatients} />;
       case "ai-design-guide": return <AIDesignGuide navigate={navigate} activePatient={activePatient} />;
       case "design-bridge":   return <DesignBridge navigate={navigate} activePatient={activePatient} clearPatient={()=>setActivePatient(null)} />;
-      case "restoration-cad": return <RestorationCADNew activePatient={activePatient} />;
+      case "restoration-cad": return <RestorationCADNew navigate={navigate} activePatient={activePatient} />;
       case "smile-sim":       return <SmileSimScreen navigate={navigate} />;
       case "implant-plan":    return <ImplantPlanScreen navigate={navigate} />;
       case "radiograph":      return <RadiographScreen />;
