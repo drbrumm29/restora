@@ -1772,19 +1772,23 @@ function ToothLibScreen() {
 // ══════════════════════════════════════════════════════════════════
 const SECTIONS = ["Start","Design","Planning","Delivery","Library"];
 
-function Sidebar({ screen, navigate }) {
+function Sidebar({ screen, navigate, activePatient }) {
   const grouped = {};
   Object.entries(SCREENS).forEach(([k,v])=>{ (grouped[v.section]=[...(grouped[v.section]||[]),{k,...v}]); });
+  const p = activePatient;
+  const displayName = p?.name || "No active patient";
+  const displayInitials = p?.initials || "—";
+  const displaySub = p ? `${p.type} · ${p.teeth}` : "Tap a patient on the dashboard";
   return (
     <div style={{ width:270,background:C.surface,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",flexShrink:0,overflow:"hidden" }}>
       {/* Patient card */}
       <div style={{ padding:"16px 16px 12px" }}>
-        <div style={{ padding:"16px",background:C.surface2,borderRadius:10,border:`1px solid ${C.border}`,cursor:"pointer" }} onClick={()=>navigate("dashboard")}>
+        <div style={{ padding:"16px",background:C.surface2,borderRadius:10,border:`1px solid ${p?C.teal+"60":C.border}`,cursor:"pointer" }} onClick={()=>navigate("dashboard")}>
           <div style={{ display:"flex",gap:13,alignItems:"center" }}>
-            <div style={{ width:44,height:44,borderRadius:"50%",background:`linear-gradient(135deg,${C.teal},#0080cc)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:700,color:"white",flexShrink:0 }}>SJ</div>
-            <div>
-              <div style={{ fontSize:16,fontWeight:700,color:C.ink,marginBottom:3 }}>Sara Johnson</div>
-              <div style={{ fontSize:12,color:C.teal }}>Cosmetic Anterior · #8,#9</div>
+            <div style={{ width:44,height:44,borderRadius:"50%",background:p?`linear-gradient(135deg,${C.teal},#0080cc)`:C.surface3,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:700,color:"white",flexShrink:0 }}>{displayInitials}</div>
+            <div style={{ minWidth:0, flex:1 }}>
+              <div style={{ fontSize:16,fontWeight:700,color:C.ink,marginBottom:3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{displayName}</div>
+              <div style={{ fontSize:12,color:p?C.teal:C.muted, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{displaySub}</div>
             </div>
           </div>
         </div>
@@ -1947,7 +1951,7 @@ export default function App() {
           transform: isMobile ? (sidebarOpen ? "translateX(0)" : "translateX(-100%)") : "none",
           transition: "transform .25s ease",
         }}>
-          <Sidebar screen={screen} navigate={navigate} />
+          <Sidebar screen={screen} navigate={navigate} activePatient={activePatient} />
         </div>
         <main style={{ flex:1,display:"flex",flexDirection:"column",overflow:"hidden",width:isMobile?"100vw":"auto" }}>
           {renderScreen()}
