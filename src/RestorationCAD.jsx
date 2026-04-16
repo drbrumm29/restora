@@ -252,9 +252,14 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
         geom.setAttribute('position', new THREE.BufferAttribute(m.positions, 3));
         if (m.normals) geom.setAttribute('normal', new THREE.BufferAttribute(m.normals, 3));
         else geom.computeVertexNormals();
-        // Dental scanner convention: Z-up, Y-front.
-        // Three.js convention: Y-up, Z-front.
-        geom.rotateX(-Math.PI / 2);
+        // Dental scanner convention: Z-up (occlusal plane = Z), Y-anterior (front of mouth)
+        // Three.js: Y-up, +Z toward default camera
+        // rotateX(+π/2): (x, y, z) → (x, -z, y)
+        //   - Medit Z (occlusal) → Three.js Y with sign flipped
+        //     → upper arch teeth point DOWN (Y<0), gingiva at Y=0 ✓
+        //     → lower arch teeth point UP (Y>0), gingiva at Y=0 ✓
+        //   - Medit Y (anterior-posterior) → Three.js Z (anterior faces +Z = camera) ✓
+        geom.rotateX(Math.PI / 2);
 
         // For library teeth (crown slot): center geometry on its own bbox
         // so the pivot is at tooth center. This makes rotate/scale feel natural.
@@ -584,44 +589,74 @@ export default function RestorationCAD({ navigate, activePatient }) {
     ));
   }
 
-  // Auto-generate tooth numbers: user places 2 anchor labels (leftmost + rightmost
-  // of the arch they want to label), and this interpolates numbers along the arch curve.
-  // For smile makeover cases, targets are #4-#13 (upper) — 10 teeth.
-  // User labels just #4 and #13, we interpolate #5-#12 along the path between them.
+  // Auto-generate tooth numbers: user places 2+ anchor labels, app fills in the missing
+  // teeth along a parabolic arch curve between consecutive anchor pairs.
   function autoNumberTeeth() {
     if (toothLabels.length < 2) {
       alert("Place at least 2 tooth labels first (the endpoints of the arch you want to number — e.g. #4 and #13). Then click Auto-Number again to fill in between.");
       return;
     }
-    // Sort existing labels by tooth number
     const sorted = [...toothLabels].sort((a,b) => a.num - b.num);
     const newLabels = [...toothLabels];
 
-    // For each consecutive pair, interpolate missing tooth numbers between them
+    // Compute an anterior direction from the label cluster:
+    // The midpoint of the extreme labels should lie INSIDE the arch;
+    // the anterior side is away from the arch centroid.
+    // In post-rotation space: Z+ is anterior (faces camera in FRONT view),
+    // so arch bulge should be +Z relative to the straight-line between anchors.
+    // But robust auto-detect: take the label furthest from the a↔b midline
+    // and use its displacement as the bulge reference.
+
     for (let i = 0; i < sorted.length - 1; i++) {
       const a = sorted[i];
       const b = sorted[i+1];
       const gap = b.num - a.num;
-      if (gap <= 1) continue;  // No missing between them
-      // Interpolate along a curved path (simple linear for now — arc curve comes later)
+      if (gap <= 1) continue;
+
+      // Midpoint of this pair
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2 };
+      // Chord direction (normalized)
+      const chord = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
+      const chordLen = Math.hypot(chord.x, chord.y, chord.z);
+
+      // Find outward direction: try to use another anchor's displacement from midline,
+      // else fall back to +Z (anterior in post-rotation dental coord).
+      let outX = 0, outY = 0, outZ = 1;
+      if (sorted.length >= 3) {
+        // Pick the label that's NOT a or b but is roughly between them by tooth number
+        const ref = sorted.find(l => l !== a && l !== b && l.num > a.num && l.num < b.num);
+        if (ref) {
+          // Project ref onto chord, find perpendicular component
+          const refDisp = { x: ref.x - a.x, y: ref.y - a.y, z: ref.z - a.z };
+          const chordDot = (refDisp.x*chord.x + refDisp.y*chord.y + refDisp.z*chord.z) / (chordLen * chordLen);
+          outX = refDisp.x - chordDot * chord.x;
+          outY = refDisp.y - chordDot * chord.y;
+          outZ = refDisp.z - chordDot * chord.z;
+          const outLen = Math.hypot(outX, outY, outZ);
+          if (outLen > 0.01) {
+            outX /= outLen; outY /= outLen; outZ /= outLen;
+          } else {
+            outX = 0; outY = 0; outZ = 1;
+          }
+        }
+      }
+
+      const bulgeAmount = chordLen * 0.15;  // 15% of chord length outward bulge
+
       for (let step = 1; step < gap; step++) {
         const num = a.num + step;
-        // Skip if already exists
         if (newLabels.find(l => l.num === num)) continue;
         const t = step / gap;
-        // Add slight arch curvature — midway bulges toward the anterior direction
-        const archBulge = 4 * t * (1 - t);  // parabolic weight, peak 1 at t=0.5
+        const bulge = 4 * t * (1 - t);  // parabolic, peaks at 1 in middle
         newLabels.push({
           num,
-          x: a.x + (b.x - a.x) * t,
-          y: a.y + (b.y - a.y) * t,
-          // Add small anterior bulge on Y axis (where anterior tooth tips point)
-          // For upper arch, this is the Y direction after rotation — try +Z
-          z: a.z + (b.z - a.z) * t - archBulge * 2,
+          x: a.x + (b.x - a.x) * t + outX * bulge * bulgeAmount,
+          y: a.y + (b.y - a.y) * t + outY * bulge * bulgeAmount,
+          z: a.z + (b.z - a.z) * t + outZ * bulge * bulgeAmount,
         });
       }
     }
-    setToothLabels(newLabels.sort((a,b)=>a.num-b.num));
+    setToothLabels(newLabels.sort((a,b) => a.num - b.num));
   }
 
   function exportDesign() {

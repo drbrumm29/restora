@@ -173,7 +173,7 @@ function ThumbRenderer({ libId, fileName, size = 120, color = 0xf0e4d0 }) {
         const geom = new THREE.BufferGeometry();
         geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geom.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
-        geom.rotateX(-Math.PI / 2);  // Z-up → Y-up
+        geom.rotateX(Math.PI / 2);  // Z-up → Y-up
         geom.computeBoundingBox();
         const bbox = geom.boundingBox;
         const center = bbox.getCenter(new THREE.Vector3());
@@ -289,7 +289,7 @@ function LargePreview({ libId, fileName, color, onAdd }) {
         const geom = new THREE.BufferGeometry();
         geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geom.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
-        geom.rotateX(-Math.PI / 2);
+        geom.rotateX(Math.PI / 2);
         geom.computeBoundingBox();
         const bbox = geom.boundingBox;
         const center = bbox.getCenter(new THREE.Vector3());
