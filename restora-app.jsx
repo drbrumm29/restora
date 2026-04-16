@@ -1242,7 +1242,69 @@ const ARCH_MAND = TEETH_DB.filter(t=>t.arch==="mand");
 const ANT6_MAX  = [6,7,8,9,10,11];
 const ANT6_MAND = [22,23,24,25,26,27];
 
+// ── Real tooth library packs (served from /libraries/) ───────────
+const LIBRARY_PACKS = [
+  {
+    id: "dannydesigner4",
+    name: "Dannydesigner 4",
+    style: "Natural · Squared",
+    description: "High-detail natural squared morphology. 7 teeth per quadrant. 9,000–33,000 tris per tooth.",
+    color: C.teal,
+    teeth: [
+      { num:1, label:"Central Incisor",  file:"1.stl", tris:9674  },
+      { num:2, label:"Lateral Incisor",  file:"2.stl", tris:11002 },
+      { num:3, label:"Canine",           file:"3.stl", tris:17523 },
+      { num:4, label:"1st Premolar",     file:"4.stl", tris:24096 },
+      { num:5, label:"2nd Premolar",     file:"5.stl", tris:23272 },
+      { num:6, label:"1st Molar",        file:"6.stl", tris:32893 },
+      { num:7, label:"2nd Molar",        file:"7.stl", tris:28323 },
+    ],
+  },
+  {
+    id: "dannydesigner5",
+    name: "Dannydesigner 5",
+    style: "Natural · Ovoid",
+    description: "Ultra-high-detail ovoid anatomy. 8 teeth per quadrant. 17,000–39,000 tris per tooth.",
+    color: C.blue,
+    teeth: [
+      { num:1, label:"Central Incisor",  file:"1.stl", tris:17243 },
+      { num:2, label:"Lateral Incisor",  file:"2.stl", tris:18932 },
+      { num:3, label:"Canine",           file:"3.stl", tris:26803 },
+      { num:4, label:"1st Premolar",     file:"4.stl", tris:26772 },
+      { num:5, label:"2nd Premolar",     file:"5.stl", tris:32935 },
+      { num:6, label:"1st Molar",        file:"6.stl", tris:38850 },
+      { num:7, label:"2nd Molar",        file:"7.stl", tris:39207 },
+      { num:8, label:"3rd Molar",        file:"8.stl", tris:34317 },
+    ],
+  },
+  {
+    id: "nct",
+    name: "NCT Design",
+    style: "Natural · Classic",
+    description: "Classic natural anatomy. Single full tooth STL. 16,060 triangles.",
+    color: C.purple,
+    teeth: [
+      { num:8, label:"Central Incisor",  file:"NCT Design.stl", tris:16060 },
+    ],
+  },
+  {
+    id: "samples",
+    name: "Sample Files",
+    style: "Arch · Individual",
+    description: "Full upper+lower arch (33MB, 688K tris) + standalone Tooth #8 reference model.",
+    color: C.amber,
+    teeth: [
+      { num:8,  label:"Tooth #8 Library Model", file:"tooth8.stl",   tris:16671  },
+      { num:99, label:"Full Upper+Lower Arch",   file:"full_arch.stl",tris:688890 },
+    ],
+  },
+];
+
 function ToothLibScreen() {
+  const [view, setView]     = useState("packs");  // packs | anatomy
+  const [selPack, setSelPack] = useState(null);
+  const [selTooth, setSelTooth] = useState(null);
+  const [downloading, setDl] = useState(null);
   const [sel, setSel] = useState(TEETH_DB.find(t=>t.n===8));
   const [archView, setArchView] = useState("max");
   const [filter, setFilter] = useState("all"); // all | anterior | premolar | molar
@@ -1257,19 +1319,86 @@ function ToothLibScreen() {
 
   const regionCol = sel ? REGION_COLOR[sel.region] : C.teal;
 
+  function downloadFile(packId, tooth) {
+    setDl(tooth.file);
+    const url = `/libraries/${packId}/${tooth.file}`;
+    const a = document.createElement('a');
+    a.href = url; a.download = tooth.file; a.click();
+    setTimeout(() => setDl(null), 1500);
+  }
+
   return (
     <div style={{ flex:1, overflow:"auto", background:C.bg, color:C.ink, fontFamily:C.sans }}>
       {/* Header */}
       <div style={{ padding:"20px 28px 0", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
         <div style={{ fontSize:20, fontWeight:700 }}>Tooth Library</div>
         <div style={{ display:"flex", gap:6 }}>
-          {["max","mand"].map(a=>(
-            <button key={a} onClick={()=>{setArchView(a);setFilter("all");}} style={{ padding:"6px 14px", borderRadius:6, fontSize:11, fontWeight:700, border:`1px solid ${archView===a?C.teal:C.border}`, background:archView===a?C.tealDim:"transparent", color:archView===a?C.teal:C.muted, cursor:"pointer", fontFamily:C.sans }}>
+          <button onClick={()=>setView("packs")} style={{ padding:"6px 14px", borderRadius:6, fontSize:11, fontWeight:700, border:`1px solid ${view==="packs"?C.teal:C.border}`, background:view==="packs"?C.tealDim:"transparent", color:view==="packs"?C.teal:C.muted, cursor:"pointer", fontFamily:C.sans }}>Library Packs</button>
+          <button onClick={()=>setView("anatomy")} style={{ padding:"6px 14px", borderRadius:6, fontSize:11, fontWeight:700, border:`1px solid ${view==="anatomy"?C.teal:C.border}`, background:view==="anatomy"?C.tealDim:"transparent", color:view==="anatomy"?C.teal:C.muted, cursor:"pointer", fontFamily:C.sans }}>Anatomy Guide</button>
+          {view==="anatomy" && ["max","mand"].map(a=>(
+            <button key={a} onClick={()=>{setArchView(a);setFilter("all");}} style={{ padding:"6px 14px", borderRadius:6, fontSize:11, fontWeight:700, border:`1px solid ${archView===a?C.blue:C.border}`, background:archView===a?C.blueDim:"transparent", color:archView===a?C.blue:C.muted, cursor:"pointer", fontFamily:C.sans }}>
               {a==="max"?"Maxillary":"Mandibular"}
             </button>
           ))}
         </div>
       </div>
+
+      {/* ── LIBRARY PACKS VIEW ────────────────────────────────── */}
+      {view==="packs" && (
+        <div style={{ padding:"20px 28px 28px" }}>
+          {!selPack ? (
+            <>
+              <div style={{ fontSize:11, color:C.muted, marginBottom:16 }}>Select a library pack to browse and download individual tooth STL files</div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:24 }}>
+                {LIBRARY_PACKS.map(pack => (
+                  <button key={pack.id} onClick={()=>setSelPack(pack)}
+                    style={{ padding:20, borderRadius:12, border:`1.5px solid ${pack.color}40`, background:pack.color+"0a", cursor:"pointer", fontFamily:C.sans, textAlign:"left", transition:"all .15s" }}
+                    onMouseEnter={e=>{e.currentTarget.style.background=pack.color+"18"; e.currentTarget.style.borderColor=pack.color+"80";}}
+                    onMouseLeave={e=>{e.currentTarget.style.background=pack.color+"0a"; e.currentTarget.style.borderColor=pack.color+"40";}}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
+                      <div style={{ fontSize:15, fontWeight:800, color:pack.color }}>{pack.name}</div>
+                      <span style={{ fontSize:9, padding:"2px 8px", borderRadius:4, background:pack.color+"20", color:pack.color, fontFamily:C.font, fontWeight:700 }}>{pack.teeth.length} TEETH</span>
+                    </div>
+                    <div style={{ fontSize:11, fontWeight:600, color:C.muted, marginBottom:6 }}>{pack.style}</div>
+                    <div style={{ fontSize:11, color:C.muted, lineHeight:1.5 }}>{pack.description}</div>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              <button onClick={()=>setSelPack(null)} style={{ fontSize:12, color:C.muted, background:"none", border:"none", cursor:"pointer", padding:"0 0 16px", fontFamily:C.sans }}>← Back to packs</button>
+              <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:20, padding:16, borderRadius:10, border:`1px solid ${selPack.color}40`, background:selPack.color+"0a" }}>
+                <div>
+                  <div style={{ fontSize:16, fontWeight:800, color:selPack.color }}>{selPack.name}</div>
+                  <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>{selPack.style} · {selPack.description}</div>
+                </div>
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10 }}>
+                {selPack.teeth.map(tooth => (
+                  <div key={tooth.file} style={{ padding:14, borderRadius:9, border:`1px solid ${selPack.color}30`, background:C.surface }}>
+                    <div style={{ fontSize:13, fontWeight:800, color:selPack.color, fontFamily:C.font, marginBottom:4 }}>
+                      {tooth.num < 90 ? `#${tooth.num}` : "Full"}
+                    </div>
+                    <div style={{ fontSize:11, fontWeight:600, color:C.ink, marginBottom:4 }}>{tooth.label}</div>
+                    <div style={{ fontSize:10, color:C.muted, marginBottom:12, fontFamily:C.font }}>{tooth.tris.toLocaleString()} tris</div>
+                    <a href={`/libraries/${selPack.id}/${tooth.file}`} download={tooth.file}
+                      style={{ display:"block", padding:"7px 10px", borderRadius:5, fontSize:10, fontWeight:700, textAlign:"center",
+                        background:downloading===tooth.file?C.surface2:selPack.color, color:downloading===tooth.file?C.muted:"white",
+                        textDecoration:"none", transition:"all .15s" }}
+                      onClick={()=>setDl(tooth.file)}>
+                      {downloading===tooth.file ? "Downloading…" : "⬇ Download STL"}
+                    </a>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── ANATOMY GUIDE VIEW (existing) ─────────────────────── */}
+      {view==="anatomy" && <>
 
       {/* Anterior 6 spotlight */}
       <div style={{ padding:"16px 28px 0" }}>
@@ -1419,6 +1548,7 @@ function ToothLibScreen() {
           )}
         </div>
       </div>
+      </>}
     </div>
   );
 }
