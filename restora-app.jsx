@@ -1288,6 +1288,52 @@ const LIBRARY_PACKS = [
     ],
   },
   {
+    id: "g01",
+    name: "G01",
+    style: "Natural · Refined",
+    description: "Premium natural anatomy — 8 teeth per quadrant, upper and lower. Exocad-native format.",
+    color: C.green,
+    teeth: [
+      { num:1, label:"Central Incisor",  file:null, tris:null },
+      { num:2, label:"Lateral Incisor",  file:null, tris:null },
+      { num:3, label:"Canine",           file:null, tris:null },
+      { num:4, label:"1st Premolar",     file:null, tris:null },
+      { num:5, label:"2nd Premolar",     file:null, tris:null },
+      { num:6, label:"1st Molar",        file:null, tris:null },
+      { num:7, label:"2nd Molar",        file:null, tris:null },
+      { num:8, label:"3rd Molar",        file:null, tris:null },
+    ],
+    eoffOnly: true,
+  },
+  {
+    id: "g02",
+    name: "G02",
+    style: "Natural · Classic",
+    description: "Classic natural form — 8 teeth per quadrant, upper and lower. Exocad-native format.",
+    color: C.gold,
+    teeth: [
+      { num:1, label:"Central Incisor",  file:null, tris:null },
+      { num:2, label:"Lateral Incisor",  file:null, tris:null },
+      { num:3, label:"Canine",           file:null, tris:null },
+      { num:4, label:"1st Premolar",     file:null, tris:null },
+      { num:5, label:"2nd Premolar",     file:null, tris:null },
+      { num:6, label:"1st Molar",        file:null, tris:null },
+      { num:7, label:"2nd Molar",        file:null, tris:null },
+      { num:8, label:"3rd Molar",        file:null, tris:null },
+    ],
+    eoffOnly: true,
+  },
+  {
+    id: "alignment",
+    name: "Alignment Plates",
+    style: "Aligner · Full Arch",
+    description: "Full arch dental aligner / retainer model. 755,476 triangles. 36MB high-resolution scan.",
+    color: C.teal,
+    teeth: [
+      { num:99, label:"Alignment Plates — Full Arch", file:"alignment_plates.stl", tris:755476 },
+    ],
+  },
+  {
     id: "samples",
     name: "Sample Files",
     style: "Arch · Individual",
@@ -1382,13 +1428,19 @@ function ToothLibScreen() {
                     </div>
                     <div style={{ fontSize:11, fontWeight:600, color:C.ink, marginBottom:4 }}>{tooth.label}</div>
                     <div style={{ fontSize:10, color:C.muted, marginBottom:12, fontFamily:C.font }}>{tooth.tris.toLocaleString()} tris</div>
-                    <a href={`/libraries/${selPack.id}/${tooth.file}`} download={tooth.file}
-                      style={{ display:"block", padding:"7px 10px", borderRadius:5, fontSize:10, fontWeight:700, textAlign:"center",
-                        background:downloading===tooth.file?C.surface2:selPack.color, color:downloading===tooth.file?C.muted:"white",
-                        textDecoration:"none", transition:"all .15s" }}
-                      onClick={()=>setDl(tooth.file)}>
-                      {downloading===tooth.file ? "Downloading…" : "⬇ Download STL"}
-                    </a>
+                    {tooth.file ? (
+                      <a href={`/libraries/${selPack.id}/${tooth.file}`} download={tooth.file}
+                        style={{ display:"block", padding:"7px 10px", borderRadius:5, fontSize:10, fontWeight:700, textAlign:"center",
+                          background:downloading===tooth.file?C.surface2:selPack.color, color:downloading===tooth.file?C.muted:"white",
+                          textDecoration:"none", transition:"all .15s" }}
+                        onClick={()=>setDl(tooth.file)}>
+                        {downloading===tooth.file ? "Downloading…" : "⬇ Download STL"}
+                      </a>
+                    ) : (
+                      <div style={{ padding:"7px 10px", borderRadius:5, fontSize:9, fontWeight:700, textAlign:"center", background:C.surface2, color:C.muted }}>
+                        Exocad .eoff format
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
