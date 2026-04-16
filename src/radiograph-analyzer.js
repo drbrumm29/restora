@@ -147,21 +147,18 @@ If the image cannot be interpreted as a dental radiograph, return:
 }`;
 
 export async function analyzeRadiograph(imageBase64, mimeType, userHint = "") {
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
+  const prompt = `${RADIOLOGIST_PROMPT}\n\n${userHint ? `Clinical context provided by clinician: "${userHint}"\n\n` : ""}Analyze the above radiograph. Return only the JSON object — no preamble, no code fences.`;
+
+  const response = await fetch("/api/analyze-radiograph", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 3000,
-      messages: [{
-        role: "user",
-        content: [
-          { type: "image", source: { type: "base64", media_type: mimeType, data: imageBase64 } },
-          { type: "text", text: `${RADIOLOGIST_PROMPT}\n\n${userHint ? `Clinical context provided by clinician: "${userHint}"\n\n` : ""}Analyze the above radiograph. Return only the JSON object — no preamble, no code fences.` }
-        ]
-      }],
-    })
+    body: JSON.stringify({ imageBase64, mimeType, prompt }),
   });
+
+  if (!response.ok) {
+    const err = await response.json().catch(()=>({}));
+    return { ok: false, error: err.message || err.error || `Server returned ${response.status}`, raw: err.details || "" };
+  }
 
   const data = await response.json();
   const text = data.content?.map(i => i.text || "").join("\n") || "";
