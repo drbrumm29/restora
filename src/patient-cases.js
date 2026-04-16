@@ -3,6 +3,43 @@
 
 export const PATIENTS = [
   {
+    id: "carrie-pappas",
+    name: "Carrie Pappas",
+    initials: "CP",
+    teeth: "#18, #19",
+    type: "Implant Restoration",
+    subtype: "Screw-retained crowns",
+    status: "In progress",
+    statusColor: "blue",
+    route: "implant",
+    system: "lab",
+    age: 58,
+    gender: "F",
+    notes: "FMX 6/16/25 shows two integrated implants at #18 and #19 with existing crowns. Patient presents for crown replacement / evaluation. Scan date: 2026-04-08.",
+    files: [
+      { name: "upper_scan.beb",     slot: "upper", size: 14680064, subdir:"carrie" },
+      { name: "lower_scan.beb",     slot: "lower", size: 14680064, subdir:"carrie" },
+      { name: "fmx_radiograph.png", slot: "xray",  size: 319488,   subdir:"carrie" },
+    ],
+    // AI-analyzed tooth chart — derived from FMX radiograph
+    toothChart: {
+      implants:   [18, 19],
+      missing:    [],
+      restored:   [2, 3, 14, 15, 29, 30],  // teeth showing amalgam/composite on FMX
+      endodontic: [],
+      present:    [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,20,21,22,23,24,25,26,27,28,29,30,31,32],
+    },
+    xrayAnalysis: {
+      date: "2026-04-08",
+      type: "Full Mouth Series (FMX)",
+      findings: [
+        { severity: "info",     tooth: 18, note: "Implant fixture with existing crown — integrated, no peri-implant pathology visible" },
+        { severity: "info",     tooth: 19, note: "Implant fixture with existing crown — integrated, no peri-implant pathology visible" },
+        { severity: "info",     tooth: null, note: "Remaining dentition intact — restorations present in posterior segments" },
+      ],
+    },
+  },
+  {
     id: "sarah-johnson",
     name: "Sarah Johnson",
     initials: "SJ",
@@ -96,9 +133,14 @@ export const PATIENTS = [
 // Load patient files as File objects for upload to Design Bridge
 export async function loadPatientFiles(patient) {
   const filesPromises = patient.files.map(async (f) => {
-    const response = await fetch(`/patient-cases/${f.name}`);
+    const path = f.subdir ? `/patient-cases/${f.subdir}/${f.name}` : `/patient-cases/${f.name}`;
+    const response = await fetch(path);
     const blob = await response.blob();
-    return new File([blob], f.name, { type: "model/stl", lastModified: Date.now() });
+    const ext = f.name.split('.').pop().toLowerCase();
+    const mime = ext==='png'||ext==='jpg'||ext==='jpeg' ? `image/${ext==='jpg'?'jpeg':ext}` :
+                 ext==='stl' ? 'model/stl' :
+                 ext==='beb' ? 'application/octet-stream' : 'application/octet-stream';
+    return new File([blob], f.name, { type: mime, lastModified: Date.now() });
   });
   return Promise.all(filesPromises);
 }

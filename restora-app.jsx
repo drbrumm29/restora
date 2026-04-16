@@ -1,5 +1,6 @@
 import { useState, useReducer, useCallback, useEffect, useRef } from "react";
 import { PATIENTS, loadPatientFiles } from "./src/patient-cases.js";
+import RadiographScreen from "./src/RadiographScreen.jsx";
 
 // ═══════════════════════════════════════════════════════════════════
 // RESTORA — Complete Integrated App
@@ -30,6 +31,7 @@ const SCREENS = {
   "restoration-cad":  { label:"Restoration CAD",  icon:"✏️", section:"Design" },
   "smile-sim":        { label:"Smile Simulation", icon:"◉", section:"Design" },
   "implant-plan":     { label:"Implant Planning", icon:"◆", section:"Planning" },
+  "radiograph":       { label:"X-ray Analysis",   icon:"⚡", section:"Planning", badge:"AI" },
   "full-arch":        { label:"Full Arch",         icon:"⬟", section:"Planning" },
   "export":           { label:"Export Hub",        icon:"↑",  section:"Delivery" },
   "tooth-library":    { label:"Tooth Library",     icon:"⊡",  section:"Library" },
@@ -488,18 +490,25 @@ const SYSTEMS = {
 };
 const MODES = {
   prep:    { label:"Prep Restoration",icon:"🦷",desc:"Crown, veneer, onlay — on a prepared tooth",
-    slots:[{id:"upper",label:"Upper arch scan",req:true,accept:".stl,.obj",hint:"STL from any IOS"},{id:"lower",label:"Lower arch scan",req:true,accept:".stl,.obj",hint:"STL from any IOS"},{id:"bite",label:"Bite registration",req:false,accept:".stl,.obj",hint:"Optional — improves occlusion"},{id:"prep-photo",label:"Prep photo",req:false,accept:".jpg,.png",hint:"Retracted view post-prep"}] },
+    slots:[{id:"upper",label:"Upper arch scan",req:true,accept:".stl,.obj,.beb",hint:"STL or .beb from any IOS"},{id:"lower",label:"Lower arch scan",req:true,accept:".stl,.obj,.beb",hint:"STL or .beb from any IOS"},{id:"bite",label:"Bite registration",req:false,accept:".stl,.obj",hint:"Optional — improves occlusion"},{id:"prep-photo",label:"Prep photo",req:false,accept:".jpg,.png",hint:"Retracted view post-prep"},{id:"xray",label:"X-ray / radiograph",req:false,accept:".jpg,.png,.jpeg",hint:"PA, BW, or FMX"}] },
   mockup:  { label:"Smile Mockup",icon:"😊",desc:"Digital smile design before any prep",
     slots:[{id:"face-repose",label:"Full face — repose",req:true,accept:".jpg,.png,.heic",hint:"Lips relaxed, natural light"},{id:"face-smile",label:"Full face — smile",req:true,accept:".jpg,.png,.heic",hint:"Full smile"},{id:"retracted",label:"Retracted frontal",req:true,accept:".jpg,.png,.heic",hint:"Cheek retractors in"},{id:"lateral-r",label:"Lateral right",req:false,accept:".jpg,.png,.heic",hint:"Right buccal"},{id:"lateral-l",label:"Lateral left",req:false,accept:".jpg,.png,.heic",hint:"Left buccal"}] },
   implant: { label:"Implant Restoration",icon:"🔩",desc:"Crown on implant, bridge, bar, or abutment design",
-    slots:[{id:"upper",label:"Upper arch scan",req:true,accept:".stl,.obj",hint:"With scan body in place"},{id:"lower",label:"Lower arch scan",req:true,accept:".stl,.obj",hint:"STL from any IOS"},{id:"cbct",label:"CBCT / DICOM",req:false,accept:".dcm,.zip",hint:"Required for guided surgery"},{id:"scan-body",label:"Scan body report",req:false,accept:".pdf,.csv",hint:"Manufacturer position data"}] },
+    slots:[{id:"upper",label:"Upper arch scan",req:true,accept:".stl,.obj,.beb",hint:"STL or .beb from any IOS"},{id:"lower",label:"Lower arch scan",req:true,accept:".stl,.obj,.beb",hint:"With scan body if applicable"},{id:"xray",label:"X-ray / radiograph",req:false,accept:".jpg,.png,.jpeg",hint:"PA, BW, FMX — verifies implant"},{id:"cbct",label:"CBCT / DICOM",req:false,accept:".dcm,.zip",hint:"Required for guided surgery"},{id:"scan-body",label:"Scan body report",req:false,accept:".pdf,.csv",hint:"Manufacturer position data"}] },
 };
+
+// Auto-detect if a file is an X-ray based on filename patterns
+function isXray(filename) {
+  const n = filename.toLowerCase();
+  return /x[-_ ]?ray|fmx|radiograph|pano|bitewing|periapical/.test(n);
+}
 
 function inferMode(files) {
   const names=files.map(f=>f.name.toLowerCase()), exts=files.map(f=>f.name.split(".").pop()||"");
   if(exts.some(e=>e==="dcm")||names.some(n=>n.includes("cbct")||n.includes("scanbody")||n.includes("implant"))) return {mode:"implant",confidence:.92,reason:"CBCT/scan body detected"};
+  if(names.some(n=>isXray(n))) return {mode:"implant",confidence:.88,reason:"X-ray detected — assuming diagnostic case"};
   if(exts.every(e=>["jpg","jpeg","png","heic"].includes(e))&&names.some(n=>n.includes("face")||n.includes("smile")||n.includes("retract"))) return {mode:"mockup",confidence:.9,reason:"Facial photos detected"};
-  if(exts.some(e=>["stl","obj","ply"].includes(e))) return {mode:"prep",confidence:.85,reason:"Arch STL scans detected"};
+  if(exts.some(e=>["stl","obj","ply","beb"].includes(e))) return {mode:"prep",confidence:.85,reason:"Arch scan files detected"};
   return null;
 }
 function pickSystem(mode, files) {
@@ -729,6 +738,82 @@ function DesignBridge({ navigate, activePatient, clearPatient }) {
                 <button onClick={()=>{clearPatient&&clearPatient();setMode(null);setSystem(null);setSlots([]);setDetection(null);setStep("mode");}} style={{ fontSize:10, color:C.muted, background:"none", border:`1px solid ${C.border}`, borderRadius:5, padding:"5px 10px", cursor:"pointer", fontFamily:C.sans }}>Close patient</button>
               </div>
             )}
+
+            {/* AI X-ray analysis with tooth chart */}
+            {activePatient?.toothChart && (
+              <div style={{ marginBottom:18, padding:"18px 20px", borderRadius:10, background:C.surface, border:`1px solid ${C.border}` }}>
+                <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
+                  <span style={{ fontSize:10, fontFamily:C.font, color:C.teal, letterSpacing:2, fontWeight:700 }}>⚡ AI X-RAY ANALYSIS</span>
+                  {activePatient.xrayAnalysis && <span style={{ fontSize:11, color:C.muted }}>{activePatient.xrayAnalysis.type} · {activePatient.xrayAnalysis.date}</span>}
+                </div>
+
+                {/* Tooth chart — palmer notation style */}
+                <div style={{ marginBottom:14 }}>
+                  <div style={{ fontSize:10, fontFamily:C.font, color:C.muted, letterSpacing:1.5, marginBottom:8 }}>CHART</div>
+                  {/* Maxillary row (1-16) */}
+                  <div style={{ display:"flex", gap:2, marginBottom:3 }}>
+                    {Array.from({length:16},(_,i)=>i+1).map(n => {
+                      const tc = activePatient.toothChart;
+                      const isImplant = tc.implants?.includes(n);
+                      const isMissing = tc.missing?.includes(n);
+                      const isRestored = tc.restored?.includes(n);
+                      const isEndo = tc.endodontic?.includes(n);
+                      const bg = isImplant ? C.purple+"40" : isMissing ? C.red+"30" : isEndo ? C.amber+"30" : isRestored ? C.blue+"25" : C.surface2;
+                      const fg = isImplant ? C.purple : isMissing ? C.red : isEndo ? C.amber : isRestored ? C.blue : C.muted;
+                      const border = isImplant||isMissing||isEndo||isRestored ? fg+"80" : C.border;
+                      return (
+                        <div key={n} title={`#${n}${isImplant?' IMPLANT':''}${isMissing?' MISSING':''}${isRestored?' RESTORED':''}`}
+                          style={{ flex:1, minWidth:24, padding:"6px 2px", borderRadius:4, border:`1px solid ${border}`, background:bg, textAlign:"center", fontSize:10, fontWeight:700, color:fg, fontFamily:C.font }}>
+                          {n}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Mandibular row (32-17 reversed to match anatomical mirror) */}
+                  <div style={{ display:"flex", gap:2 }}>
+                    {Array.from({length:16},(_,i)=>32-i).map(n => {
+                      const tc = activePatient.toothChart;
+                      const isImplant = tc.implants?.includes(n);
+                      const isMissing = tc.missing?.includes(n);
+                      const isRestored = tc.restored?.includes(n);
+                      const isEndo = tc.endodontic?.includes(n);
+                      const bg = isImplant ? C.purple+"40" : isMissing ? C.red+"30" : isEndo ? C.amber+"30" : isRestored ? C.blue+"25" : C.surface2;
+                      const fg = isImplant ? C.purple : isMissing ? C.red : isEndo ? C.amber : isRestored ? C.blue : C.muted;
+                      const border = isImplant||isMissing||isEndo||isRestored ? fg+"80" : C.border;
+                      return (
+                        <div key={n} title={`#${n}${isImplant?' IMPLANT':''}${isMissing?' MISSING':''}${isRestored?' RESTORED':''}`}
+                          style={{ flex:1, minWidth:24, padding:"6px 2px", borderRadius:4, border:`1px solid ${border}`, background:bg, textAlign:"center", fontSize:10, fontWeight:700, color:fg, fontFamily:C.font }}>
+                          {n}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Legend */}
+                  <div style={{ display:"flex", gap:14, marginTop:10, fontSize:10, color:C.muted, flexWrap:"wrap" }}>
+                    <span style={{ display:"flex",alignItems:"center",gap:5 }}><span style={{ width:9,height:9,borderRadius:2,background:C.purple+"60",border:`1px solid ${C.purple}` }}/>Implant</span>
+                    <span style={{ display:"flex",alignItems:"center",gap:5 }}><span style={{ width:9,height:9,borderRadius:2,background:C.red+"40",border:`1px solid ${C.red}` }}/>Missing</span>
+                    <span style={{ display:"flex",alignItems:"center",gap:5 }}><span style={{ width:9,height:9,borderRadius:2,background:C.blue+"30",border:`1px solid ${C.blue}` }}/>Restored</span>
+                    <span style={{ display:"flex",alignItems:"center",gap:5 }}><span style={{ width:9,height:9,borderRadius:2,background:C.amber+"40",border:`1px solid ${C.amber}` }}/>Endo</span>
+                    <span style={{ display:"flex",alignItems:"center",gap:5 }}><span style={{ width:9,height:9,borderRadius:2,background:C.surface2,border:`1px solid ${C.border}` }}/>Natural</span>
+                  </div>
+                </div>
+
+                {/* Findings */}
+                {activePatient.xrayAnalysis?.findings?.length > 0 && (
+                  <div>
+                    <div style={{ fontSize:10, fontFamily:C.font, color:C.muted, letterSpacing:1.5, marginBottom:8 }}>FINDINGS</div>
+                    {activePatient.xrayAnalysis.findings.map((f,i) => (
+                      <div key={i} style={{ display:"flex", gap:10, padding:"7px 0", fontSize:11, color:C.ink, alignItems:"flex-start" }}>
+                        {f.tooth && <span style={{ fontSize:10, fontFamily:C.font, fontWeight:700, color:C.purple, minWidth:30, padding:"2px 6px", background:C.purple+"15", borderRadius:3, textAlign:"center" }}>#{f.tooth}</span>}
+                        {!f.tooth && <span style={{ minWidth:30 }}/>}
+                        <span style={{ flex:1, lineHeight:1.5, color:C.muted }}>{f.note}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Auto detection banner */}
             {autoMode&&detection&&!activePatient&&(
               <div style={{ marginBottom:16,padding:"12px 16px",borderRadius:8,background:C.tealDim,border:`1px solid ${C.tealBorder}`,display:"flex",gap:12,alignItems:"flex-start" }}>
@@ -1767,6 +1852,7 @@ export default function App() {
       case "restoration-cad": return <RestorationCAD navigate={navigate} />;
       case "smile-sim":       return <SmileSimScreen navigate={navigate} />;
       case "implant-plan":    return <ImplantPlanScreen navigate={navigate} />;
+      case "radiograph":      return <RadiographScreen />;
       case "full-arch":       return <FullArchScreen />;
       case "export":          return <ExportScreen />;
       case "tooth-library":   return <ToothLibScreen />;
