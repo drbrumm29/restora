@@ -62,7 +62,7 @@ function parseSTL(buffer) {
 }
 
 // ── The 3D Viewer ────────────────────────────────────────────────
-function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats, labelMode, toothLabels, onAddLabel, targetTeeth, onPickedLocation }) {
+function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats, labelMode, toothLabels, onAddLabel, targetTeeth, onPickedLocation, viewAngle }) {
   const mountRef = useRef(null);
   const rendererRef = useRef(null);
   const sceneRef = useRef(null);
@@ -122,6 +122,7 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
       camera.position.set(x, y, z);
       camera.lookAt(0, 0, 0);
     };
+    r.updateCamera = updateCamera;  // expose for preset animation
     updateCamera();
 
     const onDown = (e) => {
@@ -137,7 +138,7 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
       const cy = e.clientY || e.touches?.[0]?.clientY || 0;
       if (!labelModeRef.current) {
         r.theta -= (cx - r.prevX) * 0.008;
-        r.phi = Math.max(0.15, Math.min(Math.PI - 0.15, r.phi - (cy - r.prevY) * 0.008));
+        r.phi = Math.max(0.05, Math.min(Math.PI - 0.05, r.phi - (cy - r.prevY) * 0.008));
         updateCamera();
       }
       r.dragDist += Math.abs(cx - r.prevX) + Math.abs(cy - r.prevY);
@@ -157,13 +158,19 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
         );
         const rc = raycasterRef.current;
         rc.setFromCamera(mouse, camera);
-        const archMeshes = Object.entries(meshObjectsRef.current)
-          .filter(([id]) => id.includes('upper') || id.includes('lower') || id.includes('arch'))
-          .map(([,o]) => o).filter(o => o.visible);
-        const hits = rc.intersectObjects(archMeshes, false);
+        // Raycast against ALL visible meshes (not just filtered by name)
+        const visibleMeshes = Object.values(meshObjectsRef.current).filter(o => o.visible);
+        const hits = rc.intersectObjects(visibleMeshes, false);
         if (hits.length > 0) {
+          // Hit point is in world space. Meshes are shifted by centerOffset,
+          // so convert back to original scan coordinates for storage.
           const p = hits[0].point;
-          onPickedLocation({ x: p.x, y: p.y, z: p.z });
+          const offset = r.centerOffset || { x:0, y:0, z:0 };
+          onPickedLocation({
+            x: p.x - offset.x,
+            y: p.y - offset.y,
+            z: p.z - offset.z,
+          });
         }
       }
     };
@@ -335,6 +342,43 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
     });
   }, [toothLabels, targetTeeth, meshes]);
 
+  // ── View preset snapping (front/back/left/right/top/bottom/iso) ──
+  useEffect(() => {
+    if (!viewAngle || !rotateRef.current.updateCamera) return;
+    // Target angles in spherical coordinates
+    const presets = {
+      front:  { theta: Math.PI/2,       phi: Math.PI/2 },       // looking at +Z
+      back:   { theta: -Math.PI/2,      phi: Math.PI/2 },       // looking at -Z
+      left:   { theta: Math.PI,         phi: Math.PI/2 },       // looking at -X
+      right:  { theta: 0,               phi: Math.PI/2 },       // looking at +X
+      top:    { theta: Math.PI/2,       phi: 0.15 },            // looking down
+      bottom: { theta: Math.PI/2,       phi: Math.PI - 0.15 },  // looking up
+      iso:    { theta: Math.PI/4,       phi: Math.PI/3 },       // isometric default
+    };
+    const target = presets[viewAngle];
+    if (!target) return;
+    const r = rotateRef.current;
+    const startTheta = r.theta;
+    const startPhi = r.phi;
+    // Normalize theta diff to shortest path
+    let dTheta = target.theta - startTheta;
+    while (dTheta > Math.PI) dTheta -= 2*Math.PI;
+    while (dTheta < -Math.PI) dTheta += 2*Math.PI;
+    const dPhi = target.phi - startPhi;
+    // Animate
+    const duration = 400;
+    const start = performance.now();
+    const animate = () => {
+      const t = Math.min(1, (performance.now() - start) / duration);
+      const ease = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+      r.theta = startTheta + dTheta * ease;
+      r.phi = startPhi + dPhi * ease;
+      r.updateCamera();
+      if (t < 1) requestAnimationFrame(animate);
+    };
+    animate();
+  }, [viewAngle]);
+
   return <div ref={mountRef} style={{ width:"100%", height:"100%", position:"relative", cursor: labelMode ? "crosshair" : "grab", touchAction:"none" }}/>;
 }
 
@@ -362,6 +406,7 @@ export default function RestorationCAD({ navigate, activePatient }) {
   const [labelMode, setLabelMode] = useState(false);
   const [toothLabels, setToothLabels] = useState([]);  // [{num, x, y, z}, ...]
   const [pendingPick, setPendingPick] = useState(null); // { x, y, z }
+  const [viewAngle, setViewAngle] = useState(null);    // 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom' | 'iso'
 
   const patient = activePatient || PATIENTS[0];
 
@@ -537,6 +582,7 @@ export default function RestorationCAD({ navigate, activePatient }) {
             toothLabels={toothLabels}
             targetTeeth={targetTeeth}
             onPickedLocation={(loc) => setPendingPick(loc)}
+            viewAngle={viewAngle}
           />
 
           {loading && (
@@ -600,9 +646,48 @@ export default function RestorationCAD({ navigate, activePatient }) {
             </div>
           )}
 
+          {/* View preset toolbar */}
+          <div style={{ position:"absolute", bottom:16, right:16, padding:"8px", borderRadius:10, background:C.surface+"ee", border:`1px solid ${C.border}`, backdropFilter:"blur(8px)", display:"grid", gridTemplateColumns:"repeat(3, 44px)", gap:5, zIndex:3 }}>
+            {[
+              { key:"top",    label:"TOP",    icon:"⬇", grid:{gridColumn:2, gridRow:1} },
+              { key:"left",   label:"LEFT",   icon:"◀", grid:{gridColumn:1, gridRow:2} },
+              { key:"front",  label:"FRONT",  icon:"●",  grid:{gridColumn:2, gridRow:2} },
+              { key:"right",  label:"RIGHT",  icon:"▶", grid:{gridColumn:3, gridRow:2} },
+              { key:"bottom", label:"BOT",    icon:"⬆", grid:{gridColumn:2, gridRow:3} },
+              { key:"back",   label:"BACK",   icon:"○",  grid:{gridColumn:3, gridRow:3} },
+              { key:"iso",    label:"3D",     icon:"◆",  grid:{gridColumn:1, gridRow:3} },
+            ].map(btn => (
+              <button
+                key={btn.key}
+                onClick={() => { setViewAngle(null); setTimeout(()=>setViewAngle(btn.key), 10); }}
+                title={btn.label + " view"}
+                style={{
+                  ...btn.grid,
+                  padding:"8px 4px",
+                  borderRadius:7,
+                  background: C.surface2,
+                  border: `1px solid ${C.border}`,
+                  color: C.muted,
+                  fontSize: 9,
+                  fontWeight: 800,
+                  fontFamily: C.font,
+                  letterSpacing: 0.5,
+                  cursor: "pointer",
+                  display:"flex", flexDirection:"column", alignItems:"center", gap:1,
+                  transition:"all .12s",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = C.tealDim; e.currentTarget.style.color = C.teal; e.currentTarget.style.borderColor = C.tealBorder; }}
+                onMouseLeave={e => { e.currentTarget.style.background = C.surface2; e.currentTarget.style.color = C.muted; e.currentTarget.style.borderColor = C.border; }}
+              >
+                <span style={{ fontSize: 12, lineHeight:1 }}>{btn.icon}</span>
+                <span>{btn.label}</span>
+              </button>
+            ))}
+          </div>
+
           {/* Legend */}
-          <div style={{ position:"absolute", bottom:16, left:16, padding:"10px 14px", borderRadius:8, background:C.surface+"dd", border:`1px solid ${C.border}`, fontSize:11, color:C.muted, backdropFilter:"blur(6px)" }}>
-            <div style={{ fontFamily:C.font, letterSpacing:1.5, color:C.teal, fontWeight:700, marginBottom:6 }}>CONTROLS</div>
+          <div style={{ position:"absolute", bottom:16, left:16, padding:"12px 16px", borderRadius:8, background:C.surface+"dd", border:`1px solid ${C.border}`, fontSize:13, color:C.muted, backdropFilter:"blur(6px)" }}>
+            <div style={{ fontFamily:C.font, letterSpacing:1.5, color:C.teal, fontWeight:700, marginBottom:6, fontSize:12 }}>CONTROLS</div>
             <div>Drag · rotate · Scroll · zoom</div>
             <div style={{ marginTop:4 }}>Touch: drag + pinch on mobile</div>
           </div>
@@ -638,15 +723,15 @@ export default function RestorationCAD({ navigate, activePatient }) {
         </div>
 
         {/* Right panel — mesh list + controls */}
-        <div style={{ width:320, borderLeft:`1px solid ${C.border}`, background:C.surface, display:"flex", flexDirection:"column", flexShrink:0 }}>
+        <div style={{ width:360, borderLeft:`1px solid ${C.border}`, background:C.surface, display:"flex", flexDirection:"column", flexShrink:0 }}>
           {/* Material + shade */}
-          <div style={{ padding:"16px 18px", borderBottom:`1px solid ${C.border}` }}>
-            <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:10, fontWeight:700 }}>MATERIAL</div>
-            <select value={material} onChange={e=>setMat(e.target.value)} style={{ width:"100%", padding:"10px 12px", borderRadius:7, border:`1px solid ${C.border}`, background:C.surface2, color:C.ink, fontSize:14, fontFamily:C.sans, outline:"none", marginBottom:10 }}>
+          <div style={{ padding:"16px 20px", borderBottom:`1px solid ${C.border}` }}>
+            <div style={{ fontSize:13, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:10, fontWeight:700 }}>MATERIAL</div>
+            <select value={material} onChange={e=>setMat(e.target.value)} style={{ width:"100%", padding:"11px 14px", borderRadius:7, border:`1px solid ${C.border}`, background:C.surface2, color:C.ink, fontSize:15, fontFamily:C.sans, outline:"none", marginBottom:10 }}>
               {["eMax LT","eMax MT","eMax HT","Zirconia MT","Zirconia HT","Pressed lithium disilicate","Feldspathic porcelain","Composite"].map(x=><option key={x}>{x}</option>)}
             </select>
-            <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:10, fontWeight:700, marginTop:12 }}>SHADE</div>
-            <select value={shade} onChange={e=>setShade(e.target.value)} style={{ width:"100%", padding:"10px 12px", borderRadius:7, border:`1px solid ${C.border}`, background:C.surface2, color:C.ink, fontSize:14, fontFamily:C.sans, outline:"none" }}>
+            <div style={{ fontSize:13, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:10, fontWeight:700, marginTop:14 }}>SHADE</div>
+            <select value={shade} onChange={e=>setShade(e.target.value)} style={{ width:"100%", padding:"11px 14px", borderRadius:7, border:`1px solid ${C.border}`, background:C.surface2, color:C.ink, fontSize:15, fontFamily:C.sans, outline:"none" }}>
               {["BL1","BL2","BL3","BL4","A1","A2","A3","A3.5","B1","B2","C1"].map(x=><option key={x}>{x}</option>)}
             </select>
           </div>
@@ -656,34 +741,34 @@ export default function RestorationCAD({ navigate, activePatient }) {
             {/* Tooth labels section */}
             {(toothLabels.length > 0 || targetTeeth.length > 0) && (
               <>
-                <div style={{ padding:"14px 18px 8px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                  <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, fontWeight:700 }}>
+                <div style={{ padding:"16px 20px 8px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                  <div style={{ fontSize:13, fontFamily:C.font, color:C.teal, letterSpacing:2, fontWeight:700 }}>
                     TOOTH LABELS ({toothLabels.length}/{targetTeeth.length || 32})
                   </div>
                   {toothLabels.length > 0 && (
                     <button onClick={()=>{ if(confirm(`Clear all ${toothLabels.length} tooth labels for ${patient?.name}?`)) setToothLabels([]); }}
-                      style={{ padding:"4px 8px", borderRadius:4, background:"transparent", color:C.muted, border:`1px solid ${C.borderSoft}`, fontSize:10, cursor:"pointer", fontFamily:C.sans }}>Clear</button>
+                      style={{ padding:"5px 10px", borderRadius:5, background:"transparent", color:C.muted, border:`1px solid ${C.borderSoft}`, fontSize:12, cursor:"pointer", fontFamily:C.sans }}>Clear</button>
                   )}
                 </div>
                 {targetTeeth.length > 0 && (
-                  <div style={{ padding:"0 18px 8px", fontSize:10, color:C.muted, lineHeight:1.5 }}>
-                    Case targets: <span style={{ color:C.teal, fontFamily:C.font }}>#{targetTeeth.join(", #")}</span>
+                  <div style={{ padding:"0 20px 8px", fontSize:12, color:C.muted, lineHeight:1.5 }}>
+                    Case targets: <span style={{ color:C.teal, fontFamily:C.font, fontWeight:600 }}>#{targetTeeth.join(", #")}</span>
                   </div>
                 )}
                 {toothLabels.length === 0 && (
-                  <div style={{ padding:"8px 18px 14px", fontSize:11, color:C.muted, lineHeight:1.6 }}>
+                  <div style={{ padding:"8px 20px 14px", fontSize:13, color:C.muted, lineHeight:1.6 }}>
                     Click <span style={{ color:C.teal, fontWeight:700 }}>🏷 Label Teeth</span> above, then tap each tooth in the 3D view to assign numbers.
                   </div>
                 )}
                 {toothLabels.length > 0 && (
-                  <div style={{ padding:"0 14px 14px", display:"flex", flexWrap:"wrap", gap:5 }}>
+                  <div style={{ padding:"0 16px 14px", display:"flex", flexWrap:"wrap", gap:6 }}>
                     {[...toothLabels].sort((a,b)=>a.num-b.num).map(lbl => {
                       const isTarget = targetTeeth.includes(lbl.num);
                       return (
-                        <div key={lbl.num} style={{ display:"flex", alignItems:"center", gap:4, padding:"4px 4px 4px 9px", borderRadius:5, background: isTarget ? C.tealDim : C.surface2, border:`1px solid ${isTarget ? C.teal : C.border}`, fontSize:12, fontWeight:700, color: isTarget ? C.teal : C.ink, fontFamily:C.font }}>
+                        <div key={lbl.num} style={{ display:"flex", alignItems:"center", gap:4, padding:"6px 6px 6px 11px", borderRadius:6, background: isTarget ? C.tealDim : C.surface2, border:`1px solid ${isTarget ? C.teal : C.border}`, fontSize:14, fontWeight:700, color: isTarget ? C.teal : C.ink, fontFamily:C.font }}>
                           #{lbl.num}
                           <button onClick={()=>setToothLabels(ls=>ls.filter(l=>l.num!==lbl.num))}
-                            style={{ width:18, height:18, borderRadius:3, background:"transparent", color:C.muted, border:"none", fontSize:14, cursor:"pointer", lineHeight:1, padding:0 }}
+                            style={{ width:22, height:22, borderRadius:4, background:"transparent", color:C.muted, border:"none", fontSize:16, cursor:"pointer", lineHeight:1, padding:0 }}
                             title="Remove label">×</button>
                         </div>
                       );
@@ -692,14 +777,14 @@ export default function RestorationCAD({ navigate, activePatient }) {
                 )}
                 {/* Missing targets warning */}
                 {targetTeeth.length > 0 && targetTeeth.some(n => !toothLabels.find(l=>l.num===n)) && (
-                  <div style={{ margin:"0 14px 14px", padding:"8px 12px", borderRadius:6, background:C.amber+"15", border:`1px solid ${C.amber}40`, fontSize:10, color:C.amber, lineHeight:1.5 }}>
+                  <div style={{ margin:"0 16px 14px", padding:"10px 14px", borderRadius:7, background:C.amber+"15", border:`1px solid ${C.amber}40`, fontSize:12, color:C.amber, lineHeight:1.5, fontWeight:600 }}>
                     Missing: #{targetTeeth.filter(n=>!toothLabels.find(l=>l.num===n)).join(", #")}
                   </div>
                 )}
               </>
             )}
 
-            <div style={{ padding:"14px 18px 8px", fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, fontWeight:700 }}>
+            <div style={{ padding:"16px 20px 8px", fontSize:13, fontFamily:C.font, color:C.teal, letterSpacing:2, fontWeight:700 }}>
               MESHES ({meshes.length})
             </div>
             {meshes.length === 0 && !loading && (
@@ -712,21 +797,21 @@ export default function RestorationCAD({ navigate, activePatient }) {
               const isActive = m.id === activeId;
               return (
                 <div key={m.id} onClick={()=>setActive(m.id)}
-                  style={{ padding:"11px 18px", borderBottom:`1px solid ${C.borderSoft}`, cursor:"pointer", background:isActive?C.tealDim:"transparent", transition:"background .15s" }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:5 }}>
-                    <div style={{ width:14, height:14, borderRadius:3, background:color, flexShrink:0, border:`1px solid ${C.border}` }}/>
+                  style={{ padding:"13px 20px", borderBottom:`1px solid ${C.borderSoft}`, cursor:"pointer", background:isActive?C.tealDim:"transparent", transition:"background .15s" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:5 }}>
+                    <div style={{ width:16, height:16, borderRadius:4, background:color, flexShrink:0, border:`1px solid ${C.border}` }}/>
                     <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontSize:12, fontWeight:600, color:isActive?C.teal:C.ink, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{m.label}</div>
-                      <div style={{ fontSize:10, color:C.muted, fontFamily:C.font }}>{m.slot} · {m.triCount.toLocaleString()} tris</div>
+                      <div style={{ fontSize:14, fontWeight:600, color:isActive?C.teal:C.ink, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{m.label}</div>
+                      <div style={{ fontSize:12, color:C.muted, fontFamily:C.font, marginTop:2 }}>{m.slot} · {m.triCount.toLocaleString()} tris</div>
                     </div>
                     <button onClick={(e)=>{e.stopPropagation();toggleVisible(m.id);}}
-                      style={{ width:30, height:30, borderRadius:6, background:m.visible===false?C.surface3:C.tealDim, color:m.visible===false?C.muted:C.teal, border:"none", cursor:"pointer", fontSize:13 }}>
+                      style={{ width:34, height:34, borderRadius:7, background:m.visible===false?C.surface3:C.tealDim, color:m.visible===false?C.muted:C.teal, border:"none", cursor:"pointer", fontSize:15 }}>
                       {m.visible===false?"○":"●"}
                     </button>
                   </div>
                   {isActive && (
-                    <div style={{ padding:"4px 0 2px 24px" }}>
-                      <div style={{ fontSize:9, color:C.muted, marginBottom:4, letterSpacing:1, fontFamily:C.font }}>OPACITY</div>
+                    <div style={{ padding:"6px 0 4px 28px" }}>
+                      <div style={{ fontSize:11, color:C.muted, marginBottom:5, letterSpacing:1, fontFamily:C.font, fontWeight:700 }}>OPACITY</div>
                       <input type="range" min={0} max={1} step={0.05} value={m.opacity ?? 1}
                         onChange={e=>setOpacity(m.id, +e.target.value)}
                         onClick={e=>e.stopPropagation()}
@@ -739,9 +824,9 @@ export default function RestorationCAD({ navigate, activePatient }) {
           </div>
 
           {/* Footer actions */}
-          <div style={{ padding:"14px 18px", borderTop:`1px solid ${C.border}`, display:"flex", flexDirection:"column", gap:8 }}>
-            <button onClick={()=>navigate && navigate('design-bridge')} style={{ padding:"12px", borderRadius:8, background:C.surface2, color:C.muted, border:`1px solid ${C.border}`, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:C.sans }}>← Back to Design Bridge</button>
-            <button onClick={()=>navigate && navigate('export')} disabled={meshes.length===0} style={{ padding:"12px", borderRadius:8, background:meshes.length?C.teal:C.surface2, color:meshes.length?"white":C.muted, border:"none", fontSize:13, fontWeight:700, cursor:meshes.length?"pointer":"not-allowed", fontFamily:C.sans }}>Send to Export →</button>
+          <div style={{ padding:"16px 20px", borderTop:`1px solid ${C.border}`, display:"flex", flexDirection:"column", gap:10 }}>
+            <button onClick={()=>navigate && navigate('design-bridge')} style={{ padding:"13px", borderRadius:8, background:C.surface2, color:C.muted, border:`1px solid ${C.border}`, fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:C.sans }}>← Back to Design Bridge</button>
+            <button onClick={()=>navigate && navigate('export')} disabled={meshes.length===0} style={{ padding:"14px", borderRadius:8, background:meshes.length?C.teal:C.surface2, color:meshes.length?"white":C.muted, border:"none", fontSize:15, fontWeight:700, cursor:meshes.length?"pointer":"not-allowed", fontFamily:C.sans }}>Send to Export →</button>
           </div>
         </div>
       </div>
