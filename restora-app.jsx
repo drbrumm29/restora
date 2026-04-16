@@ -605,9 +605,10 @@ function DesignBridge({ navigate, activePatient, clearPatient }) {
     setSlots(prev=>prev.map(s=>s.id===slotId?{...s,file,uploaded:true}:s));
   };
 
-  // Auto-send countdown
+  // Auto-send countdown — only when user manually drops files (not when loading from patient)
   useEffect(()=>{
     if(!autoMode||step!=="files"||!mode||!system)return;
+    if(activePatient)return;  // Never auto-send when a patient was loaded — user must review + send manually
     const req=slots.filter(s=>s.req), done=slots.filter(s=>s.req&&s.uploaded);
     if(req.length>0&&done.length>=req.length){
       setCountdown(5); let t=5;
@@ -617,7 +618,7 @@ function DesignBridge({ navigate, activePatient, clearPatient }) {
       },1000);
     } else { if(timerRef.current)clearInterval(timerRef.current); setCountdown(null); }
     return ()=>{if(timerRef.current)clearInterval(timerRef.current);};
-  },[slots,autoMode,step,mode,system]);
+  },[slots,autoMode,step,mode,system,activePatient]);
 
   const send = () => {
     const j={id:`RES-${Date.now()}`,system,mode,status:"uploading",progress:0,startedAt:new Date()};
@@ -918,10 +919,10 @@ function DesignBridge({ navigate, activePatient, clearPatient }) {
                   <textarea value={note} onChange={e=>setNote(e.target.value)} rows={3} placeholder="Shade, design notes, special instructions…"
                     style={{ width:"100%",padding:"7px 10px",borderRadius:5,border:`1px solid ${C.border}`,background:C.surface2,color:C.ink,fontSize:12,fontFamily:C.sans,outline:"none",resize:"none",boxSizing:"border-box" }} />
                 </Card>
-                <Btn onClick={send} disabled={!canSend} style={{ padding:"13px 20px",fontSize:13,borderRadius:8 }}>
+                <Btn onClick={send} disabled={!canSend} style={{ padding:"18px 24px",fontSize:16,borderRadius:10 }}>
                   Send to {sys.name} →
                 </Btn>
-                {!canSend&&<div style={{ fontSize:11,color:C.muted,textAlign:"center" }}>{reqTotal-reqDone} required file{reqTotal-reqDone!==1?"s":""} remaining</div>}
+                {!canSend&&<div style={{ fontSize:13,color:C.muted,textAlign:"center" }}>{reqTotal-reqDone} required file{reqTotal-reqDone!==1?"s":""} remaining</div>}
               </div>
             </div>
           </div>
