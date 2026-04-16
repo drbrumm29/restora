@@ -1198,40 +1198,226 @@ function ExportScreen() {
   );
 }
 
+// ── Full 32-tooth database ────────────────────────────────────────
+const TEETH_DB = [
+  // MAXILLARY
+  {n:1, name:"Max 3rd Molar",      short:"Wisdom",           arch:"max", region:"molar",    L:"6-7mm",  W:"8-10mm", root:"11-14mm", roots:3, cusp:4, aacd:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Variable",      emergence:"Standard",              note:"Often aberrant morphology. Verify root anatomy."},
+  {n:2, name:"Max 2nd Molar",      short:"2nd Molar",        arch:"max", region:"molar",    L:"6-8mm",  W:"9-11mm", root:"18-22mm", roots:3, cusp:4, aacd:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Thick-flat",    emergence:"Furcation barrel",      note:"3 roots — MB, DB, Palatal. Furcation shaping critical."},
+  {n:3, name:"Max 1st Molar",      short:"1st Molar",        arch:"max", region:"molar",    L:"6-8mm",  W:"10-11mm",root:"20-24mm", roots:3, cusp:4, aacd:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Thick-flat",    emergence:"Furcation barrel",      note:"Largest surface area tooth. High occlusal load."},
+  {n:4, name:"Max 2nd Premolar",   short:"2nd Premolar",     arch:"max", region:"premolar", L:"7-9mm",  W:"6-7mm",  root:"14-17mm", roots:1, cusp:2, aacd:false, prep:"Crown or onlay",      mat:"Lithium disilicate",     margin:"Chamfer 0.3mm", biotype:"Medium",        emergence:"Zero tissue push",       note:"1 root. Good for onlay if sufficient structure remains."},
+  {n:5, name:"Max 1st Premolar",   short:"1st Premolar",     arch:"max", region:"premolar", L:"7-9mm",  W:"7-8mm",  root:"14-17mm", roots:2, cusp:2, aacd:false, prep:"Crown or onlay",      mat:"Lithium disilicate",     margin:"Chamfer 0.3mm", biotype:"Medium",        emergence:"Zero tissue push",       note:"Often 2 roots (buccal/palatal). Careful margin placement."},
+  {n:6, name:"Max Canine",         short:"Canine",           arch:"max", region:"anterior", L:"10-12mm",W:"7-8mm",  root:"17-20mm", roots:1, cusp:1, aacd:true,  prep:"Veneer or crown",     mat:"Pressed lithium disilicate",margin:"Feather/chamfer 0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"AACD: canine gingival level = central. Longest root. Critical for anterior guidance."},
+  {n:7, name:"Max Lateral Incisor",short:"Lateral",          arch:"max", region:"anterior", L:"7-10mm", W:"6-7mm",  root:"13-15mm", roots:1, cusp:0, aacd:true,  prep:"Veneer or no-prep",   mat:"Pressed lithium disilicate",margin:"Feather 0.1-0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"AACD: laterals 0.5mm more coronal than centrals. Most variable tooth morphology."},
+  {n:8, name:"Max Central Incisor",short:"Central (R)",      arch:"max", region:"anterior", L:"9-12mm", W:"8-9mm",  root:"14-17mm", roots:1, cusp:0, aacd:true,  prep:"Veneer or no-prep",   mat:"Pressed lithium disilicate",margin:"Feather 0.1-0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"AACD: W:L ratio 75–80%. Right central. Midline reference tooth."},
+  {n:9, name:"Max Central Incisor",short:"Central (L)",      arch:"max", region:"anterior", L:"9-12mm", W:"8-9mm",  root:"14-17mm", roots:1, cusp:0, aacd:true,  prep:"Veneer or no-prep",   mat:"Pressed lithium disilicate",margin:"Feather 0.1-0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"AACD: W:L ratio 75–80%. Left central. Mirror symmetry with #8 critical."},
+  {n:10,name:"Max Lateral Incisor",short:"Lateral",          arch:"max", region:"anterior", L:"7-10mm", W:"6-7mm",  root:"13-15mm", roots:1, cusp:0, aacd:true,  prep:"Veneer or no-prep",   mat:"Pressed lithium disilicate",margin:"Feather 0.1-0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"AACD: laterals 0.5mm more coronal than centrals. Mirror of #7."},
+  {n:11,name:"Max Canine",         short:"Canine",           arch:"max", region:"anterior", L:"10-12mm",W:"7-8mm",  root:"17-20mm", roots:1, cusp:1, aacd:true,  prep:"Veneer or crown",     mat:"Pressed lithium disilicate",margin:"Feather/chamfer 0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"Mirror of #6. Left canine guidance. Critical esthetic zone."},
+  {n:12,name:"Max 1st Premolar",   short:"1st Premolar",     arch:"max", region:"premolar", L:"7-9mm",  W:"7-8mm",  root:"14-17mm", roots:2, cusp:2, aacd:false, prep:"Crown or onlay",      mat:"Lithium disilicate",     margin:"Chamfer 0.3mm", biotype:"Medium",        emergence:"Zero tissue push",       note:"Mirror of #5. Often 2 roots."},
+  {n:13,name:"Max 2nd Premolar",   short:"2nd Premolar",     arch:"max", region:"premolar", L:"7-9mm",  W:"6-7mm",  root:"14-17mm", roots:1, cusp:2, aacd:false, prep:"Crown or onlay",      mat:"Lithium disilicate",     margin:"Chamfer 0.3mm", biotype:"Medium",        emergence:"Zero tissue push",       note:"Mirror of #4."},
+  {n:14,name:"Max 1st Molar",      short:"1st Molar",        arch:"max", region:"molar",    L:"6-8mm",  W:"10-11mm",root:"20-24mm", roots:3, cusp:4, aacd:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Thick-flat",    emergence:"Furcation barrel",      note:"Mirror of #3. Palatal root longest."},
+  {n:15,name:"Max 2nd Molar",      short:"2nd Molar",        arch:"max", region:"molar",    L:"6-8mm",  W:"9-11mm", root:"18-22mm", roots:3, cusp:4, aacd:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Thick-flat",    emergence:"Furcation barrel",      note:"Mirror of #2."},
+  {n:16,name:"Max 3rd Molar",      short:"Wisdom",           arch:"max", region:"molar",    L:"6-7mm",  W:"8-10mm", root:"11-14mm", roots:3, cusp:4, aacd:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Variable",      emergence:"Standard",              note:"Mirror of #1. Aberrant morphology common."},
+  // MANDIBULAR
+  {n:17,name:"Mand 3rd Molar",     short:"Wisdom",           arch:"mand",region:"molar",    L:"6-7mm",  W:"8-10mm", root:"11-14mm", roots:2, cusp:4, aacd:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Variable",      emergence:"Standard",              note:"Often impacted or aberrant. Verify IAN proximity."},
+  {n:18,name:"Mand 2nd Molar",     short:"2nd Molar",        arch:"mand",region:"molar",    L:"6-7mm",  W:"9-10mm", root:"18-21mm", roots:2, cusp:4, aacd:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Thick-flat",    emergence:"Furcation barrel",      note:"2 roots (mesial/distal). IAN clearance check required."},
+  {n:19,name:"Mand 1st Molar",     short:"1st Molar",        arch:"mand",region:"molar",    L:"6-8mm",  W:"10-11mm",root:"20-22mm", roots:2, cusp:4, aacd:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Thick-flat",    emergence:"Furcation barrel",      note:"Most common implant site. IAN clearance ≥2mm mandatory."},
+  {n:20,name:"Mand 2nd Premolar",  short:"2nd Premolar",     arch:"mand",region:"premolar", L:"7-8mm",  W:"6-7mm",  root:"14-16mm", roots:1, cusp:2, aacd:false, prep:"Crown or onlay",      mat:"Lithium disilicate",     margin:"Chamfer 0.3mm", biotype:"Medium",        emergence:"Zero tissue push",       note:"1 root. Good onlay candidate."},
+  {n:21,name:"Mand 1st Premolar",  short:"1st Premolar",     arch:"mand",region:"premolar", L:"7-9mm",  W:"6-7mm",  root:"14-16mm", roots:1, cusp:1, aacd:false, prep:"Crown or onlay",      mat:"Lithium disilicate",     margin:"Chamfer 0.3mm", biotype:"Medium",        emergence:"Zero tissue push",       note:"1 root. Verify mental foramen proximity."},
+  {n:22,name:"Mand Canine",        short:"Canine",           arch:"mand",region:"anterior", L:"9-10mm", W:"6-7mm",  root:"16-18mm", roots:1, cusp:1, aacd:true,  prep:"Veneer or crown",     mat:"Pressed lithium disilicate",margin:"Chamfer 0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"Important for guidance. Narrower than maxillary canine."},
+  {n:23,name:"Mand Lateral Incisor",short:"Lateral",         arch:"mand",region:"anterior", L:"8-10mm", W:"5-6mm",  root:"14-16mm", roots:1, cusp:0, aacd:true,  prep:"Veneer or no-prep",   mat:"Pressed lithium disilicate",margin:"Feather 0.1-0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"Narrowest mandibular anterior. Often rotated mesially."},
+  {n:24,name:"Mand Central Incisor",short:"Central (L)",     arch:"mand",region:"anterior", L:"8-10mm", W:"5-6mm",  root:"13-15mm", roots:1, cusp:0, aacd:true,  prep:"Veneer or no-prep",   mat:"Pressed lithium disilicate",margin:"Feather 0.1-0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"Smallest tooth in mouth. Left mandibular central."},
+  {n:25,name:"Mand Central Incisor",short:"Central (R)",     arch:"mand",region:"anterior", L:"8-10mm", W:"5-6mm",  root:"13-15mm", roots:1, cusp:0, aacd:true,  prep:"Veneer or no-prep",   mat:"Pressed lithium disilicate",margin:"Feather 0.1-0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"Smallest tooth in mouth. Right mandibular central."},
+  {n:26,name:"Mand Lateral Incisor",short:"Lateral",         arch:"mand",region:"anterior", L:"8-10mm", W:"5-6mm",  root:"14-16mm", roots:1, cusp:0, aacd:true,  prep:"Veneer or no-prep",   mat:"Pressed lithium disilicate",margin:"Feather 0.1-0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"Mirror of #23."},
+  {n:27,name:"Mand Canine",        short:"Canine",           arch:"mand",region:"anterior", L:"9-10mm", W:"6-7mm",  root:"16-18mm", roots:1, cusp:1, aacd:true,  prep:"Veneer or crown",     mat:"Pressed lithium disilicate",margin:"Chamfer 0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"Mirror of #22."},
+  {n:28,name:"Mand 1st Premolar",  short:"1st Premolar",     arch:"mand",region:"premolar", L:"7-9mm",  W:"6-7mm",  root:"14-16mm", roots:1, cusp:1, aacd:false, prep:"Crown or onlay",      mat:"Lithium disilicate",     margin:"Chamfer 0.3mm", biotype:"Medium",        emergence:"Zero tissue push",       note:"Mirror of #21."},
+  {n:29,name:"Mand 2nd Premolar",  short:"2nd Premolar",     arch:"mand",region:"premolar", L:"7-8mm",  W:"6-7mm",  root:"14-16mm", roots:1, cusp:2, aacd:false, prep:"Crown or onlay",      mat:"Lithium disilicate",     margin:"Chamfer 0.3mm", biotype:"Medium",        emergence:"Zero tissue push",       note:"Mirror of #20."},
+  {n:30,name:"Mand 1st Molar",     short:"1st Molar",        arch:"mand",region:"molar",    L:"6-8mm",  W:"10-11mm",root:"20-22mm", roots:2, cusp:4, aacd:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Thick-flat",    emergence:"Furcation barrel",      note:"Mirror of #19. Common crown and implant site."},
+  {n:31,name:"Mand 2nd Molar",     short:"2nd Molar",        arch:"mand",region:"molar",    L:"6-7mm",  W:"9-10mm", root:"18-21mm", roots:2, cusp:4, aacd:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Thick-flat",    emergence:"Furcation barrel",      note:"Mirror of #18."},
+  {n:32,name:"Mand 3rd Molar",     short:"Wisdom",           arch:"mand",region:"molar",    L:"6-7mm",  W:"8-10mm", root:"11-14mm", roots:2, cusp:4, aacd:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Variable",      emergence:"Standard",              note:"Mirror of #17. Eruption and angulation variable."},
+];
+
+const REGION_COLOR = { anterior:C.teal, premolar:C.blue, molar:C.purple };
+const ARCH_MAX = TEETH_DB.filter(t=>t.arch==="max");
+const ARCH_MAND = TEETH_DB.filter(t=>t.arch==="mand");
+const ANT6_MAX  = [6,7,8,9,10,11];
+const ANT6_MAND = [22,23,24,25,26,27];
+
 function ToothLibScreen() {
-  const [sel,setSel]=useState(null);
-  const teeth=[{n:8,name:"Max Central Incisor",L:"9-12mm",W:"8-9mm",root:"14-17mm"},{n:9,name:"Max Central Incisor",L:"9-12mm",W:"8-9mm",root:"14-17mm"},{n:10,name:"Max Lateral Incisor",L:"7-10mm",W:"6-7mm",root:"13-15mm"},{n:6,name:"Max Canine",L:"10-12mm",W:"7-8mm",root:"17-20mm"},{n:3,name:"Max 1st Molar",L:"6-8mm",W:"10-11mm",root:"20-24mm"}];
+  const [sel, setSel] = useState(TEETH_DB.find(t=>t.n===8));
+  const [archView, setArchView] = useState("max");
+  const [filter, setFilter] = useState("all"); // all | anterior | premolar | molar
+
+  const displayed = TEETH_DB.filter(t =>
+    t.arch === archView && (filter==="all" || t.region===filter)
+  );
+
+  const ant6 = archView==="max"
+    ? TEETH_DB.filter(t=>ANT6_MAX.includes(t.n))
+    : TEETH_DB.filter(t=>ANT6_MAND.includes(t.n));
+
+  const regionCol = sel ? REGION_COLOR[sel.region] : C.teal;
+
   return (
-    <div style={{ flex:1,overflow:"auto",padding:28,background:C.bg,color:C.ink,fontFamily:C.sans }}>
-      <div style={{ fontSize:20,fontWeight:700,marginBottom:20 }}>Tooth Library</div>
-      <div style={{ display:"grid",gridTemplateColumns:"1fr 320px",gap:20 }}>
-        <div style={{ display:"flex",flexWrap:"wrap",gap:10,alignContent:"start" }}>
-          {teeth.map(t=>(
-            <button key={t.n} onClick={()=>setSel(t)} style={{ padding:"14px 18px",borderRadius:8,border:`1px solid ${sel?.n===t.n?C.teal:C.border}`,background:sel?.n===t.n?C.tealDim:C.surface,cursor:"pointer",fontFamily:C.sans,textAlign:"left",minWidth:160,transition:"all .15s" }}>
-              <div style={{ fontSize:18,fontWeight:700,color:sel?.n===t.n?C.teal:C.muted,marginBottom:6,fontFamily:C.font }}>#{t.n}</div>
-              <div style={{ fontSize:12,fontWeight:600,color:C.ink,marginBottom:3 }}>{t.name}</div>
-              <div style={{ fontSize:10,color:C.muted }}>L: {t.L} · W: {t.W}</div>
+    <div style={{ flex:1, overflow:"auto", background:C.bg, color:C.ink, fontFamily:C.sans }}>
+      {/* Header */}
+      <div style={{ padding:"20px 28px 0", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+        <div style={{ fontSize:20, fontWeight:700 }}>Tooth Library</div>
+        <div style={{ display:"flex", gap:6 }}>
+          {["max","mand"].map(a=>(
+            <button key={a} onClick={()=>{setArchView(a);setFilter("all");}} style={{ padding:"6px 14px", borderRadius:6, fontSize:11, fontWeight:700, border:`1px solid ${archView===a?C.teal:C.border}`, background:archView===a?C.tealDim:"transparent", color:archView===a?C.teal:C.muted, cursor:"pointer", fontFamily:C.sans }}>
+              {a==="max"?"Maxillary":"Mandibular"}
             </button>
           ))}
         </div>
-        {sel?(
-          <Card style={{ padding:18 }}>
-            <div style={{ fontSize:15,fontWeight:700,marginBottom:4 }}>Tooth #{sel.n}</div>
-            <div style={{ fontSize:12,color:C.muted,marginBottom:18 }}>{sel.name}</div>
-            <div style={{ width:60,height:80,margin:"0 auto 20px",borderRadius:"40% 40% 35% 35%",background:"linear-gradient(160deg,#f0e8d8,#ddd0b8)",boxShadow:"0 4px 16px rgba(0,0,0,.4)" }} />
-            {[["Crown length",sel.L],["Crown width",sel.W],["Root length",sel.root],["Tissue biotype","Medium-flat"],["Ideal margin","Supragingival 0.5mm"]].map(([l,v])=>(
-              <div key={l} style={{ display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${C.borderSoft}`,fontSize:12 }}>
-                <span style={{ color:C.muted }}>{l}</span>
-                <span style={{ color:C.ink,fontFamily:C.font }}>{v}</span>
-              </div>
+      </div>
+
+      {/* Anterior 6 spotlight */}
+      <div style={{ padding:"16px 28px 0" }}>
+        <div style={{ fontSize:9, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:10 }}>ANTERIOR 6 — {archView==="max"?"MAXILLARY":"MANDIBULAR"}</div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:8, marginBottom:20 }}>
+          {ant6.map(t=>(
+            <button key={t.n} onClick={()=>setSel(t)}
+              style={{ padding:"14px 8px", borderRadius:10, border:`2px solid ${sel?.n===t.n?C.teal:C.tealBorder}`, background:sel?.n===t.n?C.tealDim:C.surface, cursor:"pointer", fontFamily:C.sans, textAlign:"center", transition:"all .15s", boxShadow:sel?.n===t.n?`0 4px 12px rgba(10,186,181,.2)`:"none" }}
+              onMouseEnter={e=>{if(sel?.n!==t.n){e.currentTarget.style.background=C.tealDim;}}}
+              onMouseLeave={e=>{if(sel?.n!==t.n){e.currentTarget.style.background=C.surface;}}}>
+              {/* Tooth shape SVG */}
+              <svg width="32" height="44" viewBox="0 0 32 44" style={{ display:"block", margin:"0 auto 6px" }}>
+                {t.region==="anterior"?(
+                  <g>
+                    <ellipse cx="16" cy="16" rx="10" ry="14" fill={sel?.n===t.n?"#0abab5":"#d4f0ee"} stroke={sel?.n===t.n?C.teal:C.tealBorder} strokeWidth="1.5"/>
+                    <rect x="13" y="28" width="6" height="14" rx="3" fill={sel?.n===t.n?"#7cd8d5":"#b2e0dd"}/>
+                  </g>
+                ):(
+                  <g>
+                    <rect x="6" y="6" width="20" height="18" rx="4" fill={sel?.n===t.n?"#0abab5":"#d4f0ee"} stroke={sel?.n===t.n?C.teal:C.tealBorder} strokeWidth="1.5"/>
+                    <rect x="10" y="22" width="5" height="14" rx="2.5" fill={sel?.n===t.n?"#7cd8d5":"#b2e0dd"}/>
+                    <rect x="17" y="22" width="5" height="14" rx="2.5" fill={sel?.n===t.n?"#7cd8d5":"#b2e0dd"}/>
+                  </g>
+                )}
+              </svg>
+              <div style={{ fontSize:13, fontWeight:800, color:sel?.n===t.n?C.teal:C.ink, fontFamily:C.font }}>#{t.n}</div>
+              <div style={{ fontSize:9, color:C.muted, marginTop:2, lineHeight:1.3 }}>{t.short}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 340px", gap:0, minHeight:0 }}>
+        {/* Left: full arch list */}
+        <div style={{ padding:"0 28px 28px", overflow:"auto" }}>
+          {/* Filter */}
+          <div style={{ display:"flex", gap:6, marginBottom:14 }}>
+            {["all","anterior","premolar","molar"].map(f=>(
+              <button key={f} onClick={()=>setFilter(f)} style={{ padding:"4px 12px", borderRadius:5, fontSize:10, fontWeight:600, border:`1px solid ${filter===f?C.teal:C.border}`, background:filter===f?C.tealDim:"transparent", color:filter===f?C.teal:C.muted, cursor:"pointer", fontFamily:C.sans, textTransform:"capitalize" }}>
+                {f==="all"?"All regions":f}
+              </button>
             ))}
-          </Card>
-        ):(
-          <Card style={{ padding:28,textAlign:"center" }}>
-            <div style={{ fontSize:28,marginBottom:12 }}>⊡</div>
-            <div style={{ fontSize:13,color:C.muted }}>Select a tooth to view anatomy data</div>
-          </Card>
-        )}
+            <span style={{ marginLeft:"auto", fontSize:10, color:C.muted, alignSelf:"center" }}>{displayed.length} teeth</span>
+          </div>
+
+          {/* Tooth grid */}
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
+            {displayed.map(t=>{
+              const col = REGION_COLOR[t.region];
+              return (
+                <button key={t.n} onClick={()=>setSel(t)}
+                  style={{ padding:"12px 10px", borderRadius:8, border:`1.5px solid ${sel?.n===t.n?col:C.border}`, background:sel?.n===t.n?col+"15":C.surface, cursor:"pointer", fontFamily:C.sans, textAlign:"left", transition:"all .15s" }}
+                  onMouseEnter={e=>{if(sel?.n!==t.n){e.currentTarget.style.background=col+"0d"; e.currentTarget.style.borderColor=col+"60";}}}
+                  onMouseLeave={e=>{if(sel?.n!==t.n){e.currentTarget.style.background=C.surface; e.currentTarget.style.borderColor=C.border;}}}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:4 }}>
+                    <span style={{ fontSize:15, fontWeight:800, color:sel?.n===t.n?col:C.ink, fontFamily:C.font }}>#{t.n}</span>
+                    {t.aacd && <span style={{ fontSize:8, padding:"1px 5px", borderRadius:3, background:C.tealDim, color:C.teal, fontFamily:C.font, fontWeight:700 }}>AACD</span>}
+                  </div>
+                  <div style={{ fontSize:11, fontWeight:600, color:C.ink, marginBottom:2, lineHeight:1.3 }}>{t.name}</div>
+                  <div style={{ fontSize:9, color:col, fontWeight:600, textTransform:"capitalize" }}>{t.region}</div>
+                  <div style={{ fontSize:9, color:C.muted, marginTop:3 }}>{t.L} · {t.W}</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Right: detail panel */}
+        <div style={{ borderLeft:`1px solid ${C.border}`, background:C.surface, overflow:"auto", position:"sticky", top:0 }}>
+          {sel ? (
+            <div style={{ padding:20 }}>
+              {/* Tooth visual */}
+              <div style={{ textAlign:"center", padding:"20px 0 16px", borderBottom:`1px solid ${C.border}`, marginBottom:16 }}>
+                <svg width="60" height="80" viewBox="0 0 60 80" style={{ display:"block", margin:"0 auto 10px" }}>
+                  {sel.region==="anterior"?(
+                    <g>
+                      <ellipse cx="30" cy="28" rx="20" ry="26" fill={regionCol+"25"} stroke={regionCol} strokeWidth="2"/>
+                      <ellipse cx="30" cy="28" rx="13" ry="18" fill={regionCol+"15"}/>
+                      <rect x="24" y="52" width="12" height="26" rx="6" fill={regionCol+"20"} stroke={regionCol+"60"} strokeWidth="1.5"/>
+                    </g>
+                  ):sel.region==="premolar"?(
+                    <g>
+                      <rect x="10" y="8" width="40" height="34" rx="8" fill={regionCol+"25"} stroke={regionCol} strokeWidth="2"/>
+                      <circle cx="22" cy="24" r="5" fill={regionCol+"40"}/>
+                      <circle cx="38" cy="24" r="5" fill={regionCol+"40"}/>
+                      <rect x="20" y="40" width="10" height="30" rx="5" fill={regionCol+"20"} stroke={regionCol+"60"} strokeWidth="1.5"/>
+                      <rect x="32" y="40" width="10" height="30" rx="5" fill={regionCol+"20"} stroke={regionCol+"60"} strokeWidth="1.5"/>
+                    </g>
+                  ):(
+                    <g>
+                      <rect x="6" y="8" width="48" height="36" rx="9" fill={regionCol+"25"} stroke={regionCol} strokeWidth="2"/>
+                      <circle cx="18" cy="24" r="5" fill={regionCol+"40"}/>
+                      <circle cx="30" cy="18" r="4" fill={regionCol+"40"}/>
+                      <circle cx="42" cy="24" r="5" fill={regionCol+"40"}/>
+                      <rect x="14" y="42" width="10" height="28" rx="5" fill={regionCol+"20"} stroke={regionCol+"60"} strokeWidth="1.5"/>
+                      <rect x="36" y="42" width="10" height="28" rx="5" fill={regionCol+"20"} stroke={regionCol+"60"} strokeWidth="1.5"/>
+                    </g>
+                  )}
+                </svg>
+                <div style={{ fontSize:18, fontWeight:800, color:regionCol, fontFamily:C.font }}>#{sel.n}</div>
+                <div style={{ fontSize:13, fontWeight:700, color:C.ink, marginTop:2 }}>{sel.name}</div>
+                <div style={{ fontSize:10, color:regionCol, marginTop:4, textTransform:"capitalize", fontWeight:600 }}>{sel.arch==="max"?"Maxillary":"Mandibular"} {sel.region}</div>
+                {sel.aacd && <div style={{ display:"inline-block", marginTop:6, padding:"2px 8px", borderRadius:4, background:C.tealDim, color:C.teal, fontSize:9, fontFamily:C.font, fontWeight:700 }}>AACD GUIDELINES APPLY</div>}
+              </div>
+
+              {/* Anatomy */}
+              <div style={{ fontSize:9, fontFamily:C.font, color:C.muted, letterSpacing:2, marginBottom:8 }}>ANATOMY</div>
+              {[
+                ["Crown length", sel.L],
+                ["Crown width", sel.W],
+                ["Root length", sel.root],
+                ["Roots", sel.roots+" root"+(sel.roots>1?"s":"")],
+                ["Cusps", sel.cusp>0?sel.cusp+" cusp"+(sel.cusp>1?"s":""):"Incisal edge"],
+              ].map(([l,v])=>(
+                <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:`1px solid ${C.border}`, fontSize:11 }}>
+                  <span style={{ color:C.muted }}>{l}</span>
+                  <span style={{ color:C.ink, fontFamily:C.font, fontWeight:600 }}>{v}</span>
+                </div>
+              ))}
+
+              {/* Design protocol */}
+              <div style={{ fontSize:9, fontFamily:C.font, color:C.muted, letterSpacing:2, margin:"14px 0 8px" }}>DESIGN PROTOCOL</div>
+              {[
+                ["Tissue biotype", sel.biotype],
+                ["Prep type", sel.prep],
+                ["Material", sel.mat],
+                ["Margin", sel.margin],
+                ["Emergence", sel.emergence],
+              ].map(([l,v])=>(
+                <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:`1px solid ${C.border}`, fontSize:11 }}>
+                  <span style={{ color:C.muted }}>{l}</span>
+                  <span style={{ color:C.ink, fontFamily:C.font, fontWeight:600, textAlign:"right", maxWidth:160 }}>{v}</span>
+                </div>
+              ))}
+
+              {/* Clinical note */}
+              <div style={{ marginTop:14, padding:12, borderRadius:7, background:regionCol+"0d", border:`1px solid ${regionCol}30` }}>
+                <div style={{ fontSize:9, fontFamily:C.font, color:regionCol, letterSpacing:1, marginBottom:6 }}>CLINICAL NOTE</div>
+                <div style={{ fontSize:11, color:C.muted, lineHeight:1.6 }}>{sel.note}</div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100%", flexDirection:"column", gap:10, color:C.muted }}>
+              <div style={{ fontSize:28 }}>⊡</div>
+              <div style={{ fontSize:13 }}>Select a tooth</div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
