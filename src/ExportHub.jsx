@@ -1,288 +1,410 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { PATIENTS } from "./patient-cases.js";
 
 const C = {
   bg:"#0d1b2e", surface:"#132338", surface2:"#1a2f48", surface3:"#213858",
   border:"#2a4060", borderSoft:"#1f3352",
   ink:"#f4f7fb", muted:"#9db4cc", light:"#5a7a9b",
-  teal:"#0abab5", tealDim:"rgba(10,186,181,.15)", tealBorder:"rgba(10,186,181,.35)",
-  amber:"#d97706", red:"#dc2626", green:"#059669",
-  purple:"#7c3aed", blue:"#0891b2",
+  teal:"#0abab5", tealDim:"rgba(10,186,181,.12)", tealBorder:"rgba(10,186,181,.35)",
+  amber:"#d97706", red:"#dc2626", green:"#059669", blue:"#0891b2", purple:"#7c3aed",
   font:"'DM Mono','JetBrains Mono',monospace",
   sans:"system-ui,-apple-system,sans-serif",
 };
 
-const DELIVERY_TARGETS = [
-  { id:"lab-cad",   name:"Lab CAD",       icon:"⬡", color:C.purple, desc:"Full STL package + lab Rx + design notes",     formats:["zip"] },
-  { id:"mill",      name:"Mill Connect",  icon:"◈", color:C.blue,   desc:"Send to chairside milling unit",                formats:["stl"] },
-  { id:"download",  name:"Download",      icon:"⬇", color:C.teal,   desc:"Download case package to your device",          formats:["zip"] },
-  { id:"lab-rx",    name:"Lab Rx PDF",    icon:"📄", color:C.amber,  desc:"Printable lab prescription form",              formats:["pdf"] },
-  { id:"share",     name:"Share Link",    icon:"🔗", color:C.green,  desc:"Generate secure link to share with colleagues", formats:["url"] },
-];
+// Minimal ZIP writer — no external deps. Stored (no compression).
+// Writes valid PKZIP files the browser and lab software can read.
+function createZip(files) {
+  // files: [{name, data: Uint8Array}]
+  const encoder = new TextEncoder();
+  const localHeaders = [];
+  const centralHeaders = [];
+  let offset = 0;
 
-export default function ExportHub({ activePatient }) {
-  const [selectedItems, setSelectedItems] = useState({
-    stls: true, photos: true, radiograph: true, notes: true, params: true, flags: true,
-  });
-  const [target, setTarget] = useState("lab-cad");
-  const [exporting, setExporting] = useState(false);
-  const [exported, setExported] = useState(false);
-  const [customNotes, setCustomNotes] = useState("");
-  const [labInstructions, setLabInstructions] = useState("");
-
-  if (!activePatient) {
-    return (
-      <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:18, color:C.muted, background:C.bg, padding:30 }}>
-        <div style={{ fontSize:64 }}>↑</div>
-        <div style={{ fontSize:20, fontWeight:700, color:C.ink }}>No active patient</div>
-        <div style={{ fontSize:14, textAlign:"center", maxWidth:400 }}>Select a patient from the Dashboard to export their case package.</div>
-      </div>
-    );
-  }
-
-  const stlCount = activePatient.files?.filter(f => f.name.toLowerCase().endsWith('.stl')).length || 0;
-  const photoCount = activePatient.photos?.length || 0;
-
-  async function handleExport() {
-    setExporting(true);
-    // Build a manifest
-    const manifest = {
-      patient: activePatient.name,
-      case_type: activePatient.type,
-      subtype: activePatient.subtype,
-      teeth: activePatient.teeth,
-      date: new Date().toISOString(),
-      target,
-      parameters: selectedItems.params ? activePatient.parameters : undefined,
-      clinical_flags: selectedItems.flags ? activePatient.clinicalFlags : undefined,
-      notes: selectedItems.notes ? (activePatient.notes + '\n\n' + customNotes).trim() : undefined,
-      lab_instructions: labInstructions || undefined,
-      files: selectedItems.stls ? activePatient.files?.map(f => f.name) : [],
-      photos: selectedItems.photos ? activePatient.photos?.map(p => p.file) : [],
-    };
-
-    // For Download: generate a case manifest JSON file the user can save
-    if (target === "download" || target === "lab-cad") {
-      const json = JSON.stringify(manifest, null, 2);
-      const blob = new Blob([json], { type: "application/json" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `${activePatient.id}-case-manifest.json`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    } else if (target === "lab-rx") {
-      // Generate lab Rx as printable HTML page
-      const rxHtml = generateLabRx(activePatient, customNotes, labInstructions);
-      const blob = new Blob([rxHtml], { type: "text/html" });
-      const w = window.open(URL.createObjectURL(blob), "_blank");
-      if (w) setTimeout(() => w.print(), 500);
-    } else if (target === "share") {
-      const url = `${window.location.origin}/?patient=${activePatient.id}&view=shared`;
-      try {
-        await navigator.clipboard.writeText(url);
-        alert(`Share link copied:\n${url}\n\n(Secure sharing requires user authentication — link works for logged-in users only)`);
-      } catch {
-        alert(`Share link:\n${url}`);
+  function crc32(data) {
+    let crc = 0xffffffff;
+    for (let i = 0; i < data.length; i++) {
+      crc = crc ^ data[i];
+      for (let j = 0; j < 8; j++) {
+        crc = (crc >>> 1) ^ (0xedb88320 & (-(crc & 1)));
       }
     }
-
-    // Simulate processing for a moment
-    await new Promise(r => setTimeout(r, 700));
-    setExporting(false);
-    setExported(true);
-    setTimeout(() => setExported(false), 3500);
+    return (crc ^ 0xffffffff) >>> 0;
   }
 
+  files.forEach(f => {
+    const nameBytes = encoder.encode(f.name);
+    const crc = crc32(f.data);
+    const size = f.data.length;
+
+    // Local file header
+    const local = new Uint8Array(30 + nameBytes.length + size);
+    const ldv = new DataView(local.buffer);
+    ldv.setUint32(0, 0x04034b50, true);   // signature
+    ldv.setUint16(4, 20, true);            // version
+    ldv.setUint16(6, 0, true);             // flags
+    ldv.setUint16(8, 0, true);             // compression (stored)
+    ldv.setUint16(10, 0, true);            // mod time
+    ldv.setUint16(12, 0, true);            // mod date
+    ldv.setUint32(14, crc, true);
+    ldv.setUint32(18, size, true);         // compressed size
+    ldv.setUint32(22, size, true);         // uncompressed size
+    ldv.setUint16(26, nameBytes.length, true);
+    ldv.setUint16(28, 0, true);            // extra field length
+    local.set(nameBytes, 30);
+    local.set(f.data, 30 + nameBytes.length);
+    localHeaders.push({ data: local, offset, nameBytes, crc, size });
+    offset += local.length;
+  });
+
+  // Central directory
+  localHeaders.forEach(h => {
+    const central = new Uint8Array(46 + h.nameBytes.length);
+    const cdv = new DataView(central.buffer);
+    cdv.setUint32(0, 0x02014b50, true);    // signature
+    cdv.setUint16(4, 20, true);             // version made by
+    cdv.setUint16(6, 20, true);             // version needed
+    cdv.setUint16(8, 0, true);              // flags
+    cdv.setUint16(10, 0, true);             // compression
+    cdv.setUint16(12, 0, true);             // mod time
+    cdv.setUint16(14, 0, true);             // mod date
+    cdv.setUint32(16, h.crc, true);
+    cdv.setUint32(20, h.size, true);
+    cdv.setUint32(24, h.size, true);
+    cdv.setUint16(28, h.nameBytes.length, true);
+    cdv.setUint16(30, 0, true);             // extra field
+    cdv.setUint16(32, 0, true);             // comment
+    cdv.setUint16(34, 0, true);             // disk number
+    cdv.setUint16(36, 0, true);             // internal attrs
+    cdv.setUint32(38, 0, true);             // external attrs
+    cdv.setUint32(42, h.offset, true);      // offset of local header
+    central.set(h.nameBytes, 46);
+    centralHeaders.push(central);
+  });
+
+  const cdSize = centralHeaders.reduce((s,c) => s + c.length, 0);
+  const cdOffset = offset;
+  const eocd = new Uint8Array(22);
+  const edv = new DataView(eocd.buffer);
+  edv.setUint32(0, 0x06054b50, true);
+  edv.setUint16(4, 0, true);                // disk number
+  edv.setUint16(6, 0, true);                // disk with CD start
+  edv.setUint16(8, files.length, true);     // entries on this disk
+  edv.setUint16(10, files.length, true);    // total entries
+  edv.setUint32(12, cdSize, true);
+  edv.setUint32(16, cdOffset, true);
+  edv.setUint16(20, 0, true);               // comment length
+
+  // Concatenate
+  const total = cdOffset + cdSize + 22;
+  const out = new Uint8Array(total);
+  let p = 0;
+  localHeaders.forEach(h => { out.set(h.data, p); p += h.data.length; });
+  centralHeaders.forEach(c => { out.set(c, p); p += c.length; });
+  out.set(eocd, p);
+  return out;
+}
+
+export default function ExportHub({ navigate, activePatient }) {
+  const patient = activePatient || PATIENTS[0];
+
+  const [includeSTL, setSTL]    = useState(true);
+  const [includePhotos, setPhotos] = useState(true);
+  const [includeRx, setRx]      = useState(true);
+  const [includeReport, setReport] = useState(true);
+  const [clinicalNotes, setNotes] = useState("");
+
+  const [building, setBuilding] = useState(false);
+  const [status, setStatus]     = useState("");
+  const [error, setError]       = useState(null);
+
+  // Lab routing
+  const [labName, setLabName]   = useState(patient?.system === 'lab' ? "Brumm Dental Lab" : "Mill Connect");
+  const [dueDate, setDueDate]   = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() + 14);
+    return d.toISOString().split('T')[0];
+  });
+  const [material, setMaterial] = useState("eMax LT");
+
+  useEffect(() => {
+    setNotes(patient?.notes || "");
+  }, [patient?.id]);
+
+  function buildRxPDF() {
+    // A minimal printable Rx as a plain-text-styled HTML blob saved as .pdf.html
+    const rx = `RESTORA LAB PRESCRIPTION (Rx)
+═══════════════════════════════════════════
+
+Patient: ${patient.name}
+Patient ID: ${patient.id}
+Case: ${patient.caseType || 'Restoration'}
+Tooth/Teeth: ${patient.teeth || '—'}
+
+Lab: ${labName}
+Due: ${dueDate}
+
+─── MATERIAL ───
+${material}
+
+─── DESIGN PARAMETERS (AEP) ───
+${patient.parameters ? Object.entries(patient.parameters).map(([k,v]) => `  ${k.padEnd(24)}: ${v}`).join('\n') : '  (none specified)'}
+
+─── CLINICAL NOTES ───
+${clinicalNotes || '(none)'}
+
+─── CLINICAL FLAGS ───
+${(patient.clinicalFlags || []).map((f,i) => `  ${i+1}. ${f}`).join('\n') || '  None'}
+
+─── INCLUDED FILES ───
+${patient.files?.map(f => `  • ${f.name} [${f.slot}]`).join('\n') || '  None'}
+
+═══════════════════════════════════════════
+Generated: ${new Date().toLocaleString()}
+Restora Dental CAD Platform
+`;
+    return new TextEncoder().encode(rx);
+  }
+
+  function buildSummaryReport() {
+    const json = {
+      patient: {
+        id: patient.id,
+        name: patient.name,
+        caseType: patient.caseType,
+        teeth: patient.teeth,
+      },
+      lab: {
+        name: labName,
+        due: dueDate,
+        material,
+      },
+      aep_parameters: patient.parameters || {},
+      clinical_flags: patient.clinicalFlags || [],
+      clinical_notes: clinicalNotes,
+      files: patient.files || [],
+      generated: new Date().toISOString(),
+      platform: "Restora Dental CAD",
+    };
+    return new TextEncoder().encode(JSON.stringify(json, null, 2));
+  }
+
+  async function fetchAsBytes(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed: ${url}`);
+    const buf = await res.arrayBuffer();
+    return new Uint8Array(buf);
+  }
+
+  async function buildAndDownload() {
+    if (!patient) return;
+    setBuilding(true); setError(null);
+    const files = [];
+    try {
+      setStatus("Packaging STL files...");
+      if (includeSTL && patient.files?.length) {
+        for (const f of patient.files) {
+          try {
+            const data = await fetchAsBytes(`/patient-cases/${f.name}`);
+            files.push({ name: `stl/${f.name}`, data });
+          } catch (e) { console.warn('Skip', f.name, e); }
+        }
+      }
+
+      setStatus("Packaging photos...");
+      if (includePhotos && patient.photos?.length) {
+        for (const p of patient.photos) {
+          try {
+            const data = await fetchAsBytes(`/patient-cases/${p.file}`);
+            files.push({ name: `photos/${p.file}`, data });
+          } catch (e) { console.warn('Skip', p.file, e); }
+        }
+      }
+
+      if (includeRx) {
+        setStatus("Writing Rx...");
+        files.push({ name: `${patient.id}-Rx.txt`, data: buildRxPDF() });
+      }
+
+      if (includeReport) {
+        setStatus("Writing summary report...");
+        files.push({ name: `${patient.id}-report.json`, data: buildSummaryReport() });
+      }
+
+      if (files.length === 0) {
+        throw new Error("No content selected to export.");
+      }
+
+      setStatus("Building zip archive...");
+      const zip = createZip(files);
+
+      const blob = new Blob([zip], { type: 'application/zip' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${patient.id}-${Date.now()}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      setStatus(`✓ Exported ${files.length} files`);
+    } catch (e) {
+      setError(e.message);
+      setStatus("");
+    }
+    setBuilding(false);
+  }
+
+  function sendToLab() {
+    // Generate a mailto: with Rx text in body
+    const rxText = new TextDecoder().decode(buildRxPDF());
+    const subject = `Rx · ${patient.name} · ${patient.caseType || 'Case'} · Due ${dueDate}`;
+    const body = `Hi ${labName},
+
+Please find the case details below. I will upload the zip package via your portal.
+
+${rxText}
+
+Thanks,
+Restora`;
+    window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  }
+
+  const fileCount = (includeSTL ? patient?.files?.length || 0 : 0) +
+                    (includePhotos ? patient?.photos?.length || 0 : 0) +
+                    (includeRx ? 1 : 0) +
+                    (includeReport ? 1 : 0);
+
   return (
-    <div style={{ flex:1, overflow:"auto", background:C.bg, color:C.ink, fontFamily:C.sans, padding:"28px 28px 100px" }}>
-      <div style={{ maxWidth:900, margin:"0 auto" }}>
-        <div style={{ marginBottom:26 }}>
-          <div style={{ fontSize:30, fontWeight:800, letterSpacing:"-.02em", marginBottom:8 }}>Export Hub</div>
-          <div style={{ fontSize:15, color:C.muted }}>Package and deliver <strong style={{ color:C.teal }}>{activePatient.name}'s</strong> case</div>
+    <div style={{ flex:1, overflow:"auto", background:C.bg, color:C.ink, fontFamily:C.sans }}>
+      {/* Header */}
+      <div style={{ padding:"20px 24px", borderBottom:`1px solid ${C.border}` }}>
+        <div style={{ fontSize:22, fontWeight:800, letterSpacing:"-.02em" }}>Export Hub</div>
+        <div style={{ fontSize:13, color:C.muted, marginTop:3 }}>
+          {patient ? `${patient.name} · ${patient.caseType || 'Case'}` : "No patient selected"}
         </div>
+      </div>
 
-        {/* Patient summary card */}
-        <div style={{ padding:"20px 24px", borderRadius:12, background:C.surface, border:`1px solid ${C.border}`, marginBottom:24, display:"flex", alignItems:"center", gap:16 }}>
-          <div style={{ width:54, height:54, borderRadius:"50%", background:`linear-gradient(135deg,${C.teal},#0080cc)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, fontWeight:700, color:"white", flexShrink:0 }}>{activePatient.initials}</div>
-          <div style={{ flex:1, minWidth:0 }}>
-            <div style={{ fontSize:18, fontWeight:700, color:C.ink }}>{activePatient.name}</div>
-            <div style={{ fontSize:13, color:C.teal, marginTop:3 }}>{activePatient.type} — {activePatient.subtype} · Teeth {activePatient.teeth}</div>
+      <div style={{ maxWidth:980, margin:"0 auto", padding:"26px 24px", display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+        {/* Contents card */}
+        <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:20 }}>
+          <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, fontWeight:700, marginBottom:14 }}>PACKAGE CONTENTS</div>
+
+          <CheckRow checked={includeSTL} onChange={setSTL}
+            label={`STL files (${patient?.files?.length || 0})`}
+            desc="All scans, preps, bite reg, scanbodies"/>
+          <CheckRow checked={includePhotos} onChange={setPhotos}
+            label={`Patient photos (${patient?.photos?.length || 0})`}
+            desc="Smile, retracted, references"/>
+          <CheckRow checked={includeRx} onChange={setRx}
+            label="Lab Rx prescription (.txt)"
+            desc="AEP params, clinical flags, material spec"/>
+          <CheckRow checked={includeReport} onChange={setReport}
+            label="Summary report (.json)"
+            desc="Machine-readable case metadata"/>
+
+          <div style={{ marginTop:20, paddingTop:16, borderTop:`1px solid ${C.borderSoft}`, fontSize:12, color:C.muted }}>
+            {fileCount} files will be bundled into a zip archive
           </div>
-          <div style={{ display:"flex", gap:18, fontFamily:C.font, fontSize:12 }}>
-            <div style={{ textAlign:"center" }}>
-              <div style={{ fontSize:20, fontWeight:700, color:C.teal }}>{stlCount}</div>
-              <div style={{ color:C.muted, fontSize:10, letterSpacing:1 }}>STLs</div>
+        </div>
+
+        {/* Lab routing card */}
+        <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:20 }}>
+          <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, fontWeight:700, marginBottom:14 }}>LAB ROUTING</div>
+
+          <Field label="LAB / SERVICE">
+            <input value={labName} onChange={e=>setLabName(e.target.value)}
+              style={{ width:"100%", padding:"10px 12px", borderRadius:7, border:`1px solid ${C.border}`, background:C.surface2, color:C.ink, fontSize:14, fontFamily:C.sans, outline:"none", boxSizing:"border-box" }}/>
+          </Field>
+
+          <Field label="DUE DATE">
+            <input type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)}
+              style={{ width:"100%", padding:"10px 12px", borderRadius:7, border:`1px solid ${C.border}`, background:C.surface2, color:C.ink, fontSize:14, fontFamily:C.sans, outline:"none", boxSizing:"border-box", colorScheme:"dark" }}/>
+          </Field>
+
+          <Field label="MATERIAL">
+            <select value={material} onChange={e=>setMaterial(e.target.value)}
+              style={{ width:"100%", padding:"10px 12px", borderRadius:7, border:`1px solid ${C.border}`, background:C.surface2, color:C.ink, fontSize:14, fontFamily:C.sans, outline:"none", boxSizing:"border-box" }}>
+              {["eMax LT","eMax MT","eMax HT","Zirconia MT","Zirconia HT","Lithium disilicate pressed","Feldspathic porcelain","Composite direct","PMMA provisional"].map(x=><option key={x}>{x}</option>)}
+            </select>
+          </Field>
+        </div>
+
+        {/* Clinical notes */}
+        <div style={{ gridColumn:"1 / -1", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:20 }}>
+          <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, fontWeight:700, marginBottom:14 }}>CLINICAL NOTES</div>
+          <textarea value={clinicalNotes} onChange={e=>setNotes(e.target.value)}
+            placeholder="Shade notes, occlusal priorities, prep condition, contacts preference, etc."
+            style={{ width:"100%", minHeight:120, padding:"12px 14px", borderRadius:8, border:`1px solid ${C.border}`, background:C.surface2, color:C.ink, fontSize:14, fontFamily:C.sans, outline:"none", boxSizing:"border-box", resize:"vertical", lineHeight:1.6 }}/>
+        </div>
+
+        {/* Case summary */}
+        {patient && (
+          <div style={{ gridColumn:"1 / -1", background:C.surface2, border:`1px solid ${C.borderSoft}`, borderRadius:12, padding:20 }}>
+            <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, fontWeight:700, marginBottom:12 }}>CASE SUMMARY</div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(160px, 1fr))", gap:12, fontSize:13 }}>
+              <SumItem k="Patient" v={patient.name}/>
+              <SumItem k="Case type" v={patient.caseType || '—'}/>
+              <SumItem k="Teeth" v={patient.teeth || '—'}/>
+              <SumItem k="Route" v={patient.route || '—'}/>
+              <SumItem k="Status" v={patient.status || '—'}/>
+              <SumItem k="Files" v={`${patient.files?.length || 0} STL`}/>
             </div>
-            <div style={{ textAlign:"center" }}>
-              <div style={{ fontSize:20, fontWeight:700, color:C.teal }}>{photoCount}</div>
-              <div style={{ color:C.muted, fontSize:10, letterSpacing:1 }}>PHOTOS</div>
-            </div>
-            <div style={{ textAlign:"center" }}>
-              <div style={{ fontSize:20, fontWeight:700, color:C.teal }}>{activePatient.clinicalFlags?.length || 0}</div>
-              <div style={{ color:C.muted, fontSize:10, letterSpacing:1 }}>FLAGS</div>
-            </div>
+
+            {patient.clinicalFlags?.length > 0 && (
+              <div style={{ marginTop:16, padding:12, borderRadius:8, background:C.amberDim, border:`1px solid ${C.amber}40`, fontSize:12 }}>
+                <div style={{ fontSize:10, color:C.amber, fontFamily:C.font, letterSpacing:1.5, fontWeight:700, marginBottom:6 }}>⚠ CLINICAL FLAGS ({patient.clinicalFlags.length})</div>
+                <ul style={{ margin:0, paddingLeft:18, color:C.ink, lineHeight:1.7 }}>
+                  {patient.clinicalFlags.map((f,i) => <li key={i}>{f}</li>)}
+                </ul>
+              </div>
+            )}
           </div>
+        )}
+
+        {/* Actions */}
+        <div style={{ gridColumn:"1 / -1", display:"flex", gap:12, flexWrap:"wrap" }}>
+          <button onClick={buildAndDownload} disabled={building || !patient || fileCount === 0}
+            style={{ flex:"2 1 300px", padding:"16px 24px", borderRadius:10, background:building?C.surface2:C.teal, color:building?C.muted:"white", border:"none", fontSize:15, fontWeight:700, cursor:building?"wait":"pointer", fontFamily:C.sans }}>
+            {building ? (status || "Building...") : `⬇ Download Case Package (${fileCount} files)`}
+          </button>
+          <button onClick={sendToLab} disabled={!patient}
+            style={{ flex:"1 1 200px", padding:"16px 24px", borderRadius:10, background:C.surface2, color:C.ink, border:`1px solid ${C.border}`, fontSize:15, fontWeight:700, cursor:patient?"pointer":"not-allowed", fontFamily:C.sans }}>
+            ✉ Email Lab Rx
+          </button>
         </div>
 
-        {/* Include items */}
-        <div style={{ fontSize:12, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:12, fontWeight:700 }}>INCLUDE IN PACKAGE</div>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(250px, 1fr))", gap:10, marginBottom:24 }}>
-          {[
-            { key:"stls",       label:"STL files",           count:stlCount,       desc:"All 3D scans and preps" },
-            { key:"photos",     label:"Clinical photos",      count:photoCount,     desc:"Full smile, retracted, references" },
-            { key:"radiograph", label:"Radiograph analysis",  count:activePatient.xrayAnalysis ? 1 : 0, desc:"AI-analyzed X-ray report" },
-            { key:"notes",      label:"Clinical notes",        count:activePatient.notes ? "✓" : 0, desc:"Pre-prep workflow checklist" },
-            { key:"params",     label:"AEP parameters",       count:Object.keys(activePatient.parameters || {}).length, desc:"Tooth form, W:L, shade, occlusion" },
-            { key:"flags",      label:"Clinical flags",        count:activePatient.clinicalFlags?.length || 0, desc:"Critical + warning alerts" },
-          ].map(it => (
-            <button key={it.key} onClick={()=>setSelectedItems(s=>({...s, [it.key]: !s[it.key]}))}
-              style={{ padding:"14px 16px", borderRadius:9, cursor:"pointer", fontFamily:C.sans, textAlign:"left",
-                background: selectedItems[it.key] ? C.tealDim : C.surface,
-                border: `1.5px solid ${selectedItems[it.key] ? C.teal : C.border}` }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
-                <span style={{ fontSize:14, fontWeight:700, color: selectedItems[it.key] ? C.teal : C.ink }}>
-                  {selectedItems[it.key] ? "☑" : "☐"} {it.label}
-                </span>
-                {it.count !== 0 && <span style={{ fontSize:11, fontFamily:C.font, color:C.muted, fontWeight:700 }}>{it.count}</span>}
-              </div>
-              <div style={{ fontSize:11, color:C.muted, lineHeight:1.5 }}>{it.desc}</div>
-            </button>
-          ))}
-        </div>
-
-        {/* Delivery target */}
-        <div style={{ fontSize:12, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:12, fontWeight:700 }}>DELIVERY TARGET</div>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(240px, 1fr))", gap:10, marginBottom:24 }}>
-          {DELIVERY_TARGETS.map(t => (
-            <button key={t.id} onClick={()=>setTarget(t.id)}
-              style={{ padding:"16px 18px", borderRadius:10, cursor:"pointer", textAlign:"left", fontFamily:C.sans,
-                background: target === t.id ? t.color+"15" : C.surface,
-                border: `1.5px solid ${target === t.id ? t.color : C.border}` }}>
-              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
-                <span style={{ fontSize:22 }}>{t.icon}</span>
-                <span style={{ fontSize:15, fontWeight:700, color: target === t.id ? t.color : C.ink }}>{t.name}</span>
-              </div>
-              <div style={{ fontSize:11, color:C.muted, lineHeight:1.5 }}>{t.desc}</div>
-            </button>
-          ))}
-        </div>
-
-        {/* Custom notes */}
-        <div style={{ fontSize:12, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:12, fontWeight:700 }}>LAB INSTRUCTIONS</div>
-        <textarea value={labInstructions} onChange={e=>setLabInstructions(e.target.value)}
-          placeholder="Material specs, shade notes, contour preferences, margin design, delivery date…"
-          rows={4}
-          style={{ width:"100%", padding:"14px 16px", borderRadius:9, border:`1px solid ${C.border}`, background:C.surface, color:C.ink, fontSize:14, fontFamily:C.sans, outline:"none", resize:"vertical", boxSizing:"border-box", marginBottom:14 }} />
-
-        <div style={{ fontSize:12, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:12, fontWeight:700 }}>ADDITIONAL NOTES (optional)</div>
-        <textarea value={customNotes} onChange={e=>setCustomNotes(e.target.value)}
-          placeholder="Additional context, special considerations…"
-          rows={3}
-          style={{ width:"100%", padding:"14px 16px", borderRadius:9, border:`1px solid ${C.border}`, background:C.surface, color:C.ink, fontSize:14, fontFamily:C.sans, outline:"none", resize:"vertical", boxSizing:"border-box", marginBottom:28 }} />
-
-        {/* Export button */}
-        <button onClick={handleExport} disabled={exporting}
-          style={{ width:"100%", padding:"18px", borderRadius:10, border:"none",
-            background: exported ? C.green : exporting ? C.surface3 : `linear-gradient(135deg, ${C.teal}, #0080cc)`,
-            color:"white", fontSize:17, fontWeight:700, cursor: exporting ? "not-allowed" : "pointer",
-            fontFamily:C.sans,
-            boxShadow: exported ? `0 0 0 4px ${C.green}40` : exporting ? "none" : `0 8px 32px ${C.teal}40`,
-            transition:"all .2s" }}>
-          {exported ? "✓ Exported successfully" : exporting ? "Packaging…" : `Export to ${DELIVERY_TARGETS.find(t=>t.id===target).name} →`}
-        </button>
-
-        <div style={{ fontSize:11, color:C.muted, textAlign:"center", marginTop:14, lineHeight:1.6 }}>
-          Case manifest includes: patient info, case type, AEP parameters, clinical flags, file list, and your notes.
-          <br/>STL binary data is referenced by filename — lab downloads from secure URL.
-        </div>
+        {status && !building && <div style={{ gridColumn:"1 / -1", padding:14, borderRadius:8, background:C.greenDim, border:`1px solid ${C.green}40`, color:C.green, fontSize:13, fontWeight:700 }}>{status}</div>}
+        {error && <div style={{ gridColumn:"1 / -1", padding:14, borderRadius:8, background:C.redDim, border:`1px solid ${C.red}40`, color:C.red, fontSize:13 }}>{error}</div>}
       </div>
     </div>
   );
 }
 
-// ── Lab Rx generator ────────────────────────────────────────────
-function generateLabRx(p, customNotes, labInstructions) {
-  const today = new Date().toLocaleDateString();
-  return `<!DOCTYPE html>
-<html><head>
-<title>Lab Rx — ${p.name}</title>
-<style>
-  @media print { @page { margin: 0.5in; } body { -webkit-print-color-adjust: exact; } }
-  body { font-family: Georgia, serif; color:#222; max-width:800px; margin:30px auto; padding:30px; line-height:1.5; }
-  h1 { color:#0abab5; font-size:22px; border-bottom:2px solid #0abab5; padding-bottom:10px; margin-top:0; }
-  .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; }
-  .logo { font-size:24px; font-weight:bold; color:#0abab5; }
-  .logo span { color:#222; }
-  .section { margin-bottom:20px; padding:14px; background:#f5f9fb; border-left:4px solid #0abab5; border-radius:4px; }
-  .section-title { font-size:11px; letter-spacing:2px; color:#0abab5; font-weight:bold; margin-bottom:8px; text-transform:uppercase; }
-  .row { display:flex; padding:4px 0; font-size:14px; }
-  .label { font-weight:bold; width:180px; color:#444; }
-  .value { flex:1; color:#111; }
-  .flag-critical { color:#c00; font-weight:bold; }
-  .flag-warning { color:#b06000; }
-  .flag-info { color:#084; }
-  table { width:100%; border-collapse:collapse; margin-top:10px; }
-  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid #ddd; font-size:13px; }
-  th { background:#eef6f7; }
-  .footer { margin-top:40px; padding-top:20px; border-top:1px solid #ccc; font-size:11px; color:#666; }
-  .sig-area { margin-top:50px; display:flex; gap:40px; }
-  .sig-box { flex:1; border-top:1px solid #333; padding-top:5px; font-size:11px; color:#666; }
-</style>
-</head><body>
-  <div class="header">
-    <div class="logo">Re<span>stora</span> Lab Rx</div>
-    <div style="text-align:right; font-size:12px; color:#666;">Date: ${today}<br/>Case ID: ${p.id}</div>
-  </div>
-  <h1>Laboratory Prescription</h1>
-  <div class="section">
-    <div class="section-title">Patient</div>
-    <div class="row"><div class="label">Name:</div><div class="value"><strong>${p.name}</strong></div></div>
-    ${p.age ? `<div class="row"><div class="label">Age / Gender:</div><div class="value">${p.age} · ${p.gender||''}</div></div>` : ''}
-  </div>
-  <div class="section">
-    <div class="section-title">Case</div>
-    <div class="row"><div class="label">Type:</div><div class="value">${p.type} — ${p.subtype}</div></div>
-    <div class="row"><div class="label">Teeth:</div><div class="value"><strong>${p.teeth}</strong></div></div>
-    ${p.parameters?.shade ? `<div class="row"><div class="label">Shade:</div><div class="value">${p.parameters.shade}</div></div>` : ''}
-    ${p.parameters?.tooth_form ? `<div class="row"><div class="label">Form:</div><div class="value">${p.parameters.tooth_form}</div></div>` : ''}
-    ${p.parameters?.width_length_ratio ? `<div class="row"><div class="label">W:L ratio:</div><div class="value">${Math.round(p.parameters.width_length_ratio*100)}%</div></div>` : ''}
-    ${p.parameters?.length_adjustment_mm ? `<div class="row"><div class="label">Length adj:</div><div class="value">+${p.parameters.length_adjustment_mm}mm (verify phonetics)</div></div>` : ''}
-    ${p.parameters?.occlusion ? `<div class="row"><div class="label">Occlusion:</div><div class="value">${p.parameters.occlusion}</div></div>` : ''}
-  </div>
-  ${p.clinicalFlags?.length ? `
-  <div class="section" style="border-left-color:#b06000; background:#fef7e8">
-    <div class="section-title" style="color:#b06000">Clinical Flags</div>
-    <ul style="margin:0; padding-left:20px; font-size:13px;">
-      ${p.clinicalFlags.map(f => `<li class="flag-${f.level}">${f.text}</li>`).join('')}
-    </ul>
-  </div>` : ''}
-  ${labInstructions ? `
-  <div class="section">
-    <div class="section-title">Lab Instructions</div>
-    <div style="font-size:13px; white-space:pre-wrap;">${labInstructions}</div>
-  </div>` : ''}
-  ${customNotes ? `
-  <div class="section">
-    <div class="section-title">Additional Notes</div>
-    <div style="font-size:13px; white-space:pre-wrap;">${customNotes}</div>
-  </div>` : ''}
-  ${p.files?.length ? `
-  <div class="section">
-    <div class="section-title">Files Delivered</div>
-    <table>
-      <thead><tr><th>Filename</th><th>Type</th></tr></thead>
-      <tbody>
-        ${p.files.filter(f=>f.name.toLowerCase().endsWith('.stl')).map(f =>
-          `<tr><td>${f.name}</td><td>${f.slot||'STL'}</td></tr>`
-        ).join('')}
-      </tbody>
-    </table>
-  </div>` : ''}
-  <div class="sig-area">
-    <div class="sig-box">Doctor Signature / Date</div>
-    <div class="sig-box">Lab Technician Receipt</div>
-  </div>
-  <div class="footer">
-    Generated by Restora · Advanced Esthetic Protocol · Confidential clinical document
-  </div>
-</body></html>`;
+function CheckRow({ checked, onChange, label, desc }) {
+  return (
+    <label style={{ display:"flex", alignItems:"flex-start", gap:12, padding:"10px 0", cursor:"pointer", borderBottom:`1px solid ${C.borderSoft}` }}>
+      <input type="checkbox" checked={checked} onChange={e=>onChange(e.target.checked)}
+        style={{ marginTop:3, width:18, height:18, accentColor:C.teal, cursor:"pointer" }}/>
+      <div style={{ flex:1 }}>
+        <div style={{ fontSize:14, fontWeight:600, color:checked?C.ink:C.muted }}>{label}</div>
+        <div style={{ fontSize:11, color:C.light, marginTop:2 }}>{desc}</div>
+      </div>
+    </label>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <div style={{ marginBottom:14 }}>
+      <div style={{ fontSize:10, fontFamily:C.font, color:C.muted, letterSpacing:1.5, marginBottom:5 }}>{label}</div>
+      {children}
+    </div>
+  );
+}
+
+function SumItem({ k, v }) {
+  return (
+    <div>
+      <div style={{ fontSize:10, color:C.muted, fontFamily:C.font, letterSpacing:1, marginBottom:2 }}>{k.toUpperCase()}</div>
+      <div style={{ fontSize:14, color:C.ink, fontWeight:600 }}>{v}</div>
+    </div>
+  );
 }

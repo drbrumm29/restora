@@ -1,425 +1,393 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { PATIENTS } from "./patient-cases.js";
 
 const C = {
   bg:"#0d1b2e", surface:"#132338", surface2:"#1a2f48", surface3:"#213858",
   border:"#2a4060", borderSoft:"#1f3352",
   ink:"#f4f7fb", muted:"#9db4cc", light:"#5a7a9b",
-  teal:"#0abab5", tealDim:"rgba(10,186,181,.15)", tealBorder:"rgba(10,186,181,.35)",
-  amber:"#d97706", red:"#dc2626", green:"#059669",
-  purple:"#7c3aed", gold:"#b8860b",
+  teal:"#0abab5", tealDim:"rgba(10,186,181,.12)", tealBorder:"rgba(10,186,181,.35)",
+  amber:"#d97706", red:"#dc2626", green:"#059669", blue:"#0891b2", purple:"#7c3aed",
   font:"'DM Mono','JetBrains Mono',monospace",
   sans:"system-ui,-apple-system,sans-serif",
 };
 
-// Tooth shade color map (rough approximation of VITA + bleach shades)
-const SHADES = {
-  "BL1": "#fdfcf7", "BL2": "#fbf9f0", "BL3": "#f9f5e8", "BL4": "#f7f1df",
-  "A1":  "#f5ead0", "A2":  "#f0e0b8", "A3":  "#e8d4a0", "A3.5":"#e0c888", "A4":"#d4b870",
-  "B1":  "#f8ecd0", "B2":  "#f2deb8", "B3":  "#eacfa0",
-  "C1":  "#e8d8b8", "C2":  "#ddc8a0",
-  "D2":  "#eedac0",
+// AEP shade values from brightest to warmest
+const SHADES = [
+  { name:"BL1", rgb:[249,248,242], note:"Brightest bleach" },
+  { name:"BL2", rgb:[244,240,228], note:"Natural bleach" },
+  { name:"BL3", rgb:[238,232,215], note:"Warm bleach" },
+  { name:"BL4", rgb:[232,224,203], note:"Deep bleach" },
+  { name:"A1",  rgb:[231,220,198], note:"Natural warm" },
+  { name:"A2",  rgb:[224,211,182], note:"Common natural" },
+  { name:"A3",  rgb:[214,197,161], note:"Medium warm" },
+  { name:"B1",  rgb:[237,226,199], note:"Yellow-neutral" },
+];
+
+const TOOTH_FORMS = {
+  "square":         { ratio:0.92, label:"Square",         note:"Masculine, confident" },
+  "square-tapering":{ ratio:0.85, label:"Square-tapering",note:"Classic natural" },
+  "ovoid":          { ratio:0.80, label:"Ovoid",          note:"Feminine, youthful" },
+  "triangular":     { ratio:0.72, label:"Triangular",     note:"Sharp, dramatic" },
 };
 
-const FACE_REFS = {
-  "pupillary":       { label: "Pupillary line",       desc: "Horizontal reference — eyes" },
-  "commissure":      { label: "Commissure line",      desc: "Mouth corner reference" },
-  "incisal-edge":    { label: "Incisal edge plane",   desc: "Target incisal position" },
-  "midline":         { label: "Facial midline",       desc: "Vertical facial reference" },
-};
-
-export default function SmileSimulation({ activePatient }) {
-  const [photo, setPhoto] = useState(null);   // { url, w, h }
-  const [teethWidth, setTeethWidth] = useState(78);  // % W:L ratio
-  const [lengthAdj, setLengthAdj] = useState(0);     // mm
-  const [shade, setShade] = useState("BL2");
-  const [toothForm, setToothForm] = useState("ovoid");
-  const [smileArc, setSmileArc] = useState(true);
-  const [showRefs, setShowRefs] = useState(true);
-  const [overlayOpacity, setOverlayOpacity] = useState(0.95);
-  const [overlay, setOverlay] = useState({
-    x: 50, y: 55, width: 30, height: 7,
-    rotation: 0,
-  });
-  const [draggingOverlay, setDraggingOverlay] = useState(false);
+export default function SmileSimulation({ navigate, activePatient }) {
   const canvasRef = useRef(null);
-  const photoInputRef = useRef(null);
-  const containerRef = useRef(null);
+  const imgRef = useRef(null);
+
+  const [image, setImage]         = useState(null);  // dataURL
+  const [imageName, setImageName] = useState("");
+  const [loaded, setLoaded]       = useState(false);
+  const [imgDims, setImgDims]     = useState({ w:0, h:0 });
+
+  // Design parameters
+  const [shadeIdx, setShadeIdx]   = useState(1);  // BL2
+  const [form, setForm]           = useState("ovoid");
+  const [lengthAdj, setLengthAdj] = useState(0);   // -2 to +3mm
+  const [whiten, setWhiten]       = useState(60);  // 0-100 brightness adjustment strength
+  const [opacity, setOpacity]     = useState(100); // Overlay opacity
+
+  // Tooth region (drawn by user or auto-detected)
+  const [region, setRegion]       = useState(null); // { x, y, w, h } in image coords
+  const [drawing, setDrawing]     = useState(false);
+  const [dragStart, setDragStart] = useState(null);
+
+  const [analyzing, setAnalyzing] = useState(false);
+  const [aiNotes, setAiNotes]     = useState(null);
 
   // Auto-load Carrie's smile photo if available
   useEffect(() => {
-    if (!activePatient?.photos) return;
-    const smilePhoto = activePatient.photos.find(p => p.type === "smile") || activePatient.photos[0];
-    if (smilePhoto) {
-      const img = new Image();
-      img.onload = () => setPhoto({ url: img.src, w: img.naturalWidth, h: img.naturalHeight });
-      img.src = `/patient-cases/${smilePhoto.file}`;
+    if (activePatient?.photos?.length > 0) {
+      const photo = activePatient.photos.find(p => p.type === 'smile') || activePatient.photos[0];
+      setImage(`/patient-cases/${photo.file}`);
+      setImageName(photo.label);
     }
-  }, [activePatient]);
+  }, [activePatient?.id]);
 
-  // Apply AEP parameters from patient
+  // Load image + draw base
   useEffect(() => {
-    if (!activePatient?.parameters) return;
-    const p = activePatient.parameters;
-    if (p.width_length_ratio) setTeethWidth(Math.round(p.width_length_ratio * 100));
-    if (p.length_adjustment_mm != null) setLengthAdj(p.length_adjustment_mm);
-    if (p.shade) {
-      const s = p.shade.split(/[\s,]/)[0].replace(/[^A-Z0-9.]/gi,'');
-      if (SHADES[s]) setShade(s);
-    }
-    if (p.tooth_form) setToothForm(p.tooth_form);
-  }, [activePatient]);
+    if (!image) return;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      imgRef.current = img;
+      setImgDims({ w: img.naturalWidth, h: img.naturalHeight });
+      setLoaded(true);
+      // Auto-guess the teeth region: roughly center, mid-lower
+      if (!region) {
+        setRegion({
+          x: img.naturalWidth * 0.32,
+          y: img.naturalHeight * 0.52,
+          w: img.naturalWidth * 0.36,
+          h: img.naturalHeight * 0.14,
+        });
+      }
+    };
+    img.src = image;
+  }, [image]);
 
-  function handlePhotoUpload(file) {
-    if (!file) return;
+  // Redraw canvas when anything changes
+  useEffect(() => {
+    if (!loaded) return;
+    const canvas = canvasRef.current;
+    const img = imgRef.current;
+    if (!canvas || !img) return;
+    const ctx = canvas.getContext('2d');
+    // Fit canvas to container but render at image resolution for quality
+    canvas.width = imgDims.w;
+    canvas.height = imgDims.h;
+    ctx.drawImage(img, 0, 0);
+
+    if (!region) return;
+    const { x, y, w, h } = region;
+
+    // Get pixel data from region
+    const imgData = ctx.getImageData(x, y, w, h);
+    const data = imgData.data;
+    const shade = SHADES[shadeIdx];
+
+    // Simple masked re-shade: blend toward target shade by whiten amount
+    const blend = whiten / 100;
+    const [tr, tg, tb] = shade.rgb;
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i+1], b = data[i+2];
+      // Approximate tooth-pixel detection: bright + low saturation
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      const sat = max === 0 ? 0 : (max - min) / max;
+      const brightness = max;
+      // Very loose tooth mask: bright-ish + low-ish sat
+      const isToothLike = brightness > 110 && sat < 0.55;
+      if (isToothLike) {
+        data[i]   = Math.round(r * (1 - blend) + tr * blend);
+        data[i+1] = Math.round(g * (1 - blend) + tg * blend);
+        data[i+2] = Math.round(b * (1 - blend) + tb * blend);
+      }
+    }
+    ctx.putImageData(imgData, x, y);
+
+    // Length adjustment: redraw a slightly extended rect at bottom of tooth area
+    if (lengthAdj !== 0) {
+      // Estimate pixels-per-mm: rough guess = region height is ~10mm of teeth
+      const mmPerPx = 10 / h;
+      const pxExtension = Math.abs(lengthAdj) / mmPerPx;
+      if (lengthAdj > 0) {
+        // Sample the color of the bottom edge and extend
+        ctx.fillStyle = `rgb(${tr},${tg},${tb})`;
+        ctx.globalAlpha = 0.85;
+        ctx.fillRect(x, y + h, w, pxExtension);
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // Tooth form overlay indicator
+    ctx.strokeStyle = `rgba(10,186,181,${opacity/100})`;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8,4]);
+    ctx.strokeRect(x, y, w, h + (lengthAdj > 0 ? (Math.abs(lengthAdj) / (10/h)) : 0));
+    ctx.setLineDash([]);
+
+  }, [loaded, shadeIdx, whiten, lengthAdj, opacity, region, imgDims]);
+
+  function handleFile(f) {
+    if (!f) return;
     const reader = new FileReader();
     reader.onload = e => {
-      const img = new Image();
-      img.onload = () => setPhoto({ url: e.target.result, w: img.naturalWidth, h: img.naturalHeight });
-      img.src = e.target.result;
+      setImage(e.target.result);
+      setImageName(f.name);
+      setLoaded(false);
+      setRegion(null);
+      setAiNotes(null);
     };
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(f);
   }
 
-  // Draw teeth overlay on canvas
-  useEffect(() => {
-    if (!photo || !canvasRef.current) return;
+  // Canvas mouse: click-drag to define tooth region
+  function canvasCoords(e) {
     const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    const { w, h } = { w: canvas.width, h: canvas.height };
-    ctx.clearRect(0, 0, w, h);
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const cx = e.clientX || e.touches?.[0]?.clientX || 0;
+    const cy = e.clientY || e.touches?.[0]?.clientY || 0;
+    return { x: (cx - rect.left) * scaleX, y: (cy - rect.top) * scaleY };
+  }
+  function onDown(e) {
+    e.preventDefault();
+    const { x, y } = canvasCoords(e);
+    setDragStart({ x, y });
+    setDrawing(true);
+  }
+  function onMove(e) {
+    if (!drawing || !dragStart) return;
+    const { x, y } = canvasCoords(e);
+    setRegion({
+      x: Math.min(dragStart.x, x),
+      y: Math.min(dragStart.y, y),
+      w: Math.abs(x - dragStart.x),
+      h: Math.abs(y - dragStart.y),
+    });
+  }
+  function onUp() { setDrawing(false); setDragStart(null); }
 
-    const cx = (overlay.x/100) * w;
-    const cy = (overlay.y/100) * h;
-    const width = (overlay.width/100) * w;
-    // Height derived from width + W:L ratio (youthful ~80%, golden ~78%)
-    const baseHeight = width / (teethWidth/100) / 6; // divided by ~6 teeth
-    const height = baseHeight + lengthAdj * 3; // 3px per mm roughly
+  async function runAIAnalysis() {
+    if (!image) return;
+    setAnalyzing(true);
+    try {
+      // Get base64
+      const canvas = canvasRef.current;
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = imgDims.w; tempCanvas.height = imgDims.h;
+      tempCanvas.getContext('2d').drawImage(imgRef.current, 0, 0);
+      const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.85);
+      const b64 = dataUrl.split(',')[1];
+      const shade = SHADES[shadeIdx];
+      const formDef = TOOTH_FORMS[form];
 
-    ctx.save();
-    ctx.globalAlpha = overlayOpacity;
-    ctx.translate(cx, cy);
-    ctx.rotate(overlay.rotation * Math.PI / 180);
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1200,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } },
+              { type: "text", text: `You are a cosmetic dentistry AI analyzing a patient smile photo against proposed design parameters.
 
-    // Draw 6 anterior teeth as smile design
-    const teethCount = 6;
-    const toothWidth = width / teethCount;
-    const shadeColor = SHADES[shade] || SHADES["BL2"];
+PROPOSED PARAMETERS:
+- Target shade: ${shade.name} (${shade.note})
+- Tooth form: ${formDef.label} (${formDef.note}) — W:L ratio ${formDef.ratio}
+- Length adjustment: ${lengthAdj > 0 ? `+${lengthAdj}mm (longer)` : lengthAdj < 0 ? `${lengthAdj}mm (shorter)` : 'no change'}
 
-    for (let i = 0; i < teethCount; i++) {
-      const tx = -width/2 + i*toothWidth + toothWidth/2;
-      const isCenter = i === 2 || i === 3;    // centrals
-      const isLateral = i === 1 || i === 4;   // laterals
-      // Laterals 0.5mm coronal (higher on canvas = shorter visible)
-      const yOffset = isLateral ? 2 : 0;
-      // Smile arc — incisal edges follow a curve
-      const arcY = smileArc ? Math.pow((i - 2.5), 2) * 0.8 : 0;
-      const y = -height/2 + yOffset + arcY;
+Analyze the smile and provide:
+1. Current smile assessment (2 sentences)
+2. Will these parameters work? (honest, clinical)
+3. AEP red flags if any (smile arc, incisal display, midline, phonetics risk)
+4. Suggested adjustments
 
-      // Canine/lateral slightly narrower
-      const w_adj = isCenter ? toothWidth : (isLateral ? toothWidth*0.85 : toothWidth*0.9);
-
-      // Tooth shape based on form
-      ctx.beginPath();
-      if (toothForm === "square") {
-        // Square — sharp corners, wider
-        ctx.rect(tx - w_adj/2, y, w_adj, height);
-      } else if (toothForm === "triangular") {
-        ctx.moveTo(tx - w_adj/2, y);
-        ctx.lineTo(tx + w_adj/2, y);
-        ctx.lineTo(tx + w_adj/3, y + height);
-        ctx.lineTo(tx - w_adj/3, y + height);
-        ctx.closePath();
-      } else if (toothForm === "ovoid") {
-        // Ovoid — rounded, softer
-        const r = w_adj * 0.18;
-        ctx.moveTo(tx - w_adj/2 + r, y);
-        ctx.lineTo(tx + w_adj/2 - r, y);
-        ctx.quadraticCurveTo(tx + w_adj/2, y, tx + w_adj/2, y + r);
-        ctx.lineTo(tx + w_adj/2, y + height - r*1.5);
-        ctx.quadraticCurveTo(tx + w_adj/2.3, y + height, tx, y + height);
-        ctx.quadraticCurveTo(tx - w_adj/2.3, y + height, tx - w_adj/2, y + height - r*1.5);
-        ctx.lineTo(tx - w_adj/2, y + r);
-        ctx.quadraticCurveTo(tx - w_adj/2, y, tx - w_adj/2 + r, y);
-        ctx.closePath();
-      } else {
-        // square-tapering
-        ctx.moveTo(tx - w_adj/2, y);
-        ctx.lineTo(tx + w_adj/2, y);
-        ctx.lineTo(tx + w_adj/2.4, y + height);
-        ctx.lineTo(tx - w_adj/2.4, y + height);
-        ctx.closePath();
-      }
-
-      // Gradient fill for realistic tooth shading
-      const grad = ctx.createLinearGradient(tx, y, tx, y + height);
-      grad.addColorStop(0, "#ffffff");
-      grad.addColorStop(0.3, shadeColor);
-      grad.addColorStop(0.75, shadeColor);
-      grad.addColorStop(1, shadeColor + "dd");
-      ctx.fillStyle = grad;
-      ctx.fill();
-
-      // Subtle outline
-      ctx.strokeStyle = "rgba(0,0,0,0.15)";
-      ctx.lineWidth = 0.5;
-      ctx.stroke();
-
-      // Incisal edge highlight
-      ctx.beginPath();
-      ctx.moveTo(tx - w_adj/2.4, y + height - 2);
-      ctx.lineTo(tx + w_adj/2.4, y + height - 2);
-      ctx.strokeStyle = "rgba(255,255,255,0.4)";
-      ctx.lineWidth = 1;
-      ctx.stroke();
+Return JSON only:
+{
+  "current_assessment": "string",
+  "parameters_verdict": "ideal|acceptable|suboptimal|contraindicated",
+  "verdict_reasoning": "string",
+  "aep_flags": ["list of issues"],
+  "suggested_adjustments": ["list"]
+}` }
+            ]
+          }]
+        })
+      });
+      const data = await res.json();
+      const text = data.content?.map(i => i.text || "").join("\n") || "";
+      const clean = text.replace(/```json\n?|```\n?/g, '').trim();
+      setAiNotes(JSON.parse(clean));
+    } catch (e) {
+      setAiNotes({ parameters_verdict:"error", verdict_reasoning: e.message });
     }
+    setAnalyzing(false);
+  }
 
-    ctx.restore();
-
-    // Face reference lines
-    if (showRefs) {
-      ctx.strokeStyle = "rgba(10,186,181,0.5)";
-      ctx.lineWidth = 1;
-      ctx.setLineDash([6, 4]);
-      // Midline
-      ctx.beginPath();
-      ctx.moveTo(w/2, 0);
-      ctx.lineTo(w/2, h);
-      ctx.stroke();
-      // Incisal plane
-      ctx.beginPath();
-      ctx.moveTo(0, cy);
-      ctx.lineTo(w, cy);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-  }, [photo, overlay, teethWidth, lengthAdj, shade, toothForm, smileArc, showRefs, overlayOpacity]);
-
-  // Setup canvas
-  useEffect(() => {
-    if (!photo || !canvasRef.current || !containerRef.current) return;
+  function downloadResult() {
     const canvas = canvasRef.current;
-    const container = containerRef.current;
-    const setSize = () => {
-      const cw = container.clientWidth, ch = container.clientHeight;
-      const aspectImage = photo.w / photo.h;
-      const aspectContainer = cw / ch;
-      if (aspectImage > aspectContainer) {
-        canvas.width = cw;
-        canvas.height = cw / aspectImage;
-      } else {
-        canvas.height = ch;
-        canvas.width = ch * aspectImage;
-      }
-      // force redraw
-      setOverlay(o => ({...o}));
-    };
-    setSize();
-    const ro = new ResizeObserver(setSize);
-    ro.observe(container);
-    return () => ro.disconnect();
-  }, [photo]);
+    if (!canvas) return;
+    canvas.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `smile-sim-${SHADES[shadeIdx].name}-${form}-${lengthAdj>=0?'+':''}${lengthAdj}mm.jpg`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }, 'image/jpeg', 0.92);
+  }
 
-  function onCanvasPointerDown(e) {
-    if (!canvasRef.current) return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    const t = e.touches ? e.touches[0] : e;
-    const px = (t.clientX - rect.left) / rect.width * 100;
-    const py = (t.clientY - rect.top) / rect.height * 100;
-    const dx = px - overlay.x;
-    const dy = py - overlay.y;
-    if (Math.abs(dx) < overlay.width/2 + 5 && Math.abs(dy) < overlay.height/2 + 5) {
-      setDraggingOverlay(true);
-    }
-    e.preventDefault();
-  }
-  function onCanvasPointerMove(e) {
-    if (!draggingOverlay || !canvasRef.current) return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    const t = e.touches ? e.touches[0] : e;
-    const px = (t.clientX - rect.left) / rect.width * 100;
-    const py = (t.clientY - rect.top) / rect.height * 100;
-    setOverlay(o => ({ ...o, x: Math.max(0, Math.min(100, px)), y: Math.max(0, Math.min(100, py)) }));
-    e.preventDefault();
-  }
-  function onCanvasPointerUp() {
-    setDraggingOverlay(false);
-  }
+  const verdictColor = {
+    'ideal': C.green, 'acceptable': C.teal, 'suboptimal': C.amber, 'contraindicated': C.red, 'error': C.red,
+  };
 
   return (
     <div style={{ flex:1, display:"flex", flexDirection:"column", background:C.bg, color:C.ink, fontFamily:C.sans, overflow:"hidden" }}>
-      {/* Toolbar */}
-      <div style={{ padding:"16px 24px", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", gap:16, flexWrap:"wrap", flexShrink:0, background:C.surface }}>
+      {/* Header */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 22px", borderBottom:`1px solid ${C.border}`, gap:14, flexWrap:"wrap", flexShrink:0 }}>
         <div>
           <div style={{ fontSize:22, fontWeight:800, letterSpacing:"-.02em" }}>Smile Simulation</div>
-          <div style={{ fontSize:13, color:C.muted, marginTop:2 }}>
-            {activePatient ? `${activePatient.name} · Photo-based smile preview` : "Upload a smile photo to begin"}
+          <div style={{ fontSize:13, color:C.muted, marginTop:3 }}>
+            {imageName ? `${imageName} · ${imgDims.w}×${imgDims.h}` : "Load a patient photo to begin"}
           </div>
         </div>
-        <div style={{ flex:1 }} />
-        <button onClick={()=>setShowRefs(r=>!r)}
-          style={{ padding:"10px 16px", borderRadius:7, fontSize:13, fontWeight:700, border:"none",
-            background: showRefs ? C.teal : C.surface2, color: showRefs ? "white" : C.muted, cursor:"pointer", fontFamily:C.sans }}>
-          {showRefs?"✓ Refs":"Refs"}
-        </button>
-        <button onClick={()=>setSmileArc(s=>!s)}
-          style={{ padding:"10px 16px", borderRadius:7, fontSize:13, fontWeight:700, border:"none",
-            background: smileArc ? C.teal : C.surface2, color: smileArc ? "white" : C.muted, cursor:"pointer", fontFamily:C.sans }}>
-          {smileArc?"✓ Arc":"Arc"}
-        </button>
+        <div style={{ display:"flex", gap:10 }}>
+          <label style={{ padding:"10px 16px", borderRadius:8, background:C.surface2, color:C.muted, border:`1px solid ${C.border}`, fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:C.sans }}>
+            📸 Upload Photo
+            <input type="file" accept="image/*" style={{ display:"none" }} onChange={e=>handleFile(e.target.files?.[0])}/>
+          </label>
+          {image && <button onClick={downloadResult} style={{ padding:"10px 16px", borderRadius:8, background:C.teal, color:"white", border:"none", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:C.sans }}>⬇ Save Preview</button>}
+        </div>
       </div>
 
-      <div style={{ flex:1, display:"flex", overflow:"hidden" }}>
-        {/* Photo viewport */}
-        <div ref={containerRef} style={{ flex:1, position:"relative", background:"#000", display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden" }}>
-          {!photo && (
-            <div style={{ textAlign:"center", color:C.muted, padding:30 }}>
-              <div style={{ fontSize:64, marginBottom:16 }}>😊</div>
-              <div style={{ fontSize:18, fontWeight:700, marginBottom:8, color:C.ink }}>Upload a smile photo</div>
-              <div style={{ fontSize:13, marginBottom:24 }}>Full smile or retracted view · JPG/PNG</div>
-              <button onClick={()=>photoInputRef.current?.click()}
-                style={{ padding:"14px 24px", borderRadius:8, fontSize:15, fontWeight:700, border:"none", background:C.teal, color:"white", cursor:"pointer", fontFamily:C.sans }}>
-                Choose Photo
-              </button>
-              <input ref={photoInputRef} type="file" accept="image/*" style={{ display:"none" }}
-                onChange={e=>handlePhotoUpload(e.target.files?.[0])} />
+      {/* Main */}
+      <div style={{ flex:1, display:"flex", minHeight:0, flexWrap:"wrap" }}>
+        {/* Canvas */}
+        <div style={{ flex:"1 1 500px", minWidth:300, display:"flex", alignItems:"center", justifyContent:"center", padding:20, background:"#000", overflow:"auto" }}>
+          {!image && (
+            <div style={{ textAlign:"center", color:C.muted }}>
+              <div style={{ fontSize:48, marginBottom:14 }}>📸</div>
+              <div style={{ fontSize:15 }}>Upload a patient smile photo</div>
+              <div style={{ fontSize:12, marginTop:6 }}>or select a patient with attached photos</div>
             </div>
           )}
-          {photo && (
-            <div style={{ position:"relative", width:"100%", height:"100%", display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <img src={photo.url} alt="smile"
-                style={{ maxWidth:"100%", maxHeight:"100%", objectFit:"contain", position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)" }} />
-              <canvas ref={canvasRef}
-                onMouseDown={onCanvasPointerDown}
-                onMouseMove={onCanvasPointerMove}
-                onMouseUp={onCanvasPointerUp}
-                onMouseLeave={onCanvasPointerUp}
-                onTouchStart={onCanvasPointerDown}
-                onTouchMove={onCanvasPointerMove}
-                onTouchEnd={onCanvasPointerUp}
-                style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)", cursor: draggingOverlay?"grabbing":"grab", touchAction:"none" }} />
-              {/* Helper */}
-              <div style={{ position:"absolute", bottom:12, left:12, padding:"8px 12px", background:"rgba(19,35,56,.85)", borderRadius:6, fontSize:11, color:C.muted, fontFamily:C.font, pointerEvents:"none" }}>
-                Drag the tooth overlay to position · Use sliders to adjust
-              </div>
-            </div>
+          {image && (
+            <canvas ref={canvasRef}
+              onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
+              onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}
+              style={{ maxWidth:"100%", maxHeight:"100%", objectFit:"contain", borderRadius:8, cursor:drawing?"crosshair":"crosshair", touchAction:"none" }}/>
           )}
         </div>
 
-        {/* Right panel */}
-        <div style={{ width:320, background:C.surface, borderLeft:`1px solid ${C.border}`, overflow:"auto", display:"flex", flexDirection:"column", flexShrink:0 }}>
-          <div style={{ padding:18 }}>
-            <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:12, fontWeight:700 }}>PARAMETERS</div>
-
-            {/* W:L ratio */}
-            <div style={{ marginBottom:18 }}>
-              <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, color:C.muted, marginBottom:6 }}>
-                <span>W:L ratio</span>
-                <span style={{ color:C.teal, fontFamily:C.font, fontWeight:700 }}>{teethWidth}%</span>
-              </div>
-              <input type="range" min="65" max="90" value={teethWidth} onChange={e=>setTeethWidth(+e.target.value)}
-                style={{ width:"100%", accentColor:C.teal, height:6 }} />
-              <div style={{ fontSize:10, color:C.light, marginTop:4 }}>AEP youthful ~80%, golden ~78%, mature ~72%</div>
+        {/* Controls */}
+        <div style={{ width:340, minWidth:300, maxWidth:"100%", borderLeft:`1px solid ${C.border}`, background:C.surface, display:"flex", flexDirection:"column", flexShrink:0 }}>
+          <div style={{ padding:18, borderBottom:`1px solid ${C.border}` }}>
+            <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:10, fontWeight:700 }}>SHADE</div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:6, marginBottom:8 }}>
+              {SHADES.map((s, i) => (
+                <button key={s.name} onClick={()=>setShadeIdx(i)}
+                  style={{ padding:"10px 6px", borderRadius:6, border:`2px solid ${shadeIdx===i?C.teal:C.border}`, background:`rgb(${s.rgb.join(',')})`, color:"#333", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:C.font }}>
+                  {s.name}
+                </button>
+              ))}
             </div>
-
-            {/* Length */}
-            <div style={{ marginBottom:18 }}>
-              <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, color:C.muted, marginBottom:6 }}>
-                <span>Length adjustment</span>
-                <span style={{ color:C.teal, fontFamily:C.font, fontWeight:700 }}>{lengthAdj>0?"+":""}{lengthAdj}mm</span>
-              </div>
-              <input type="range" min="-2" max="3" step="0.5" value={lengthAdj} onChange={e=>setLengthAdj(+e.target.value)}
-                style={{ width:"100%", accentColor:C.teal, height:6 }} />
-            </div>
-
-            {/* Shade */}
-            <div style={{ marginBottom:18 }}>
-              <div style={{ fontSize:12, color:C.muted, marginBottom:8 }}>Shade</div>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:6 }}>
-                {Object.entries(SHADES).map(([s, color]) => (
-                  <button key={s} onClick={()=>setShade(s)}
-                    style={{ padding:"9px 4px", borderRadius:5, border:`2px solid ${shade===s?C.teal:C.border}`, background:color, color:"#222", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:C.font }}>
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Tooth form */}
-            <div style={{ marginBottom:18 }}>
-              <div style={{ fontSize:12, color:C.muted, marginBottom:8 }}>Tooth form</div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
-                {["ovoid","square","triangular","square-tapering"].map(f => (
-                  <button key={f} onClick={()=>setToothForm(f)}
-                    style={{ padding:"10px 8px", borderRadius:6, border:`1px solid ${toothForm===f?C.teal:C.border}`, background:toothForm===f?C.tealDim:"transparent", color:toothForm===f?C.teal:C.muted, fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:C.sans, textTransform:"capitalize" }}>
-                    {f.replace('-',' ')}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Overlay width */}
-            <div style={{ marginBottom:18 }}>
-              <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, color:C.muted, marginBottom:6 }}>
-                <span>Overlay width</span>
-                <span style={{ color:C.teal, fontFamily:C.font, fontWeight:700 }}>{overlay.width}%</span>
-              </div>
-              <input type="range" min="15" max="60" value={overlay.width} onChange={e=>setOverlay(o=>({...o, width:+e.target.value}))}
-                style={{ width:"100%", accentColor:C.teal, height:6 }} />
-            </div>
-
-            {/* Rotation */}
-            <div style={{ marginBottom:18 }}>
-              <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, color:C.muted, marginBottom:6 }}>
-                <span>Cant correction</span>
-                <span style={{ color:C.teal, fontFamily:C.font, fontWeight:700 }}>{overlay.rotation}°</span>
-              </div>
-              <input type="range" min="-10" max="10" step="0.5" value={overlay.rotation} onChange={e=>setOverlay(o=>({...o, rotation:+e.target.value}))}
-                style={{ width:"100%", accentColor:C.teal, height:6 }} />
-            </div>
-
-            {/* Opacity */}
-            <div style={{ marginBottom:18 }}>
-              <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, color:C.muted, marginBottom:6 }}>
-                <span>Blend opacity</span>
-                <span style={{ color:C.teal, fontFamily:C.font, fontWeight:700 }}>{Math.round(overlayOpacity*100)}%</span>
-              </div>
-              <input type="range" min="0.3" max="1" step="0.05" value={overlayOpacity} onChange={e=>setOverlayOpacity(+e.target.value)}
-                style={{ width:"100%", accentColor:C.teal, height:6 }} />
-            </div>
-
-            <button onClick={()=>photoInputRef.current?.click()}
-              style={{ width:"100%", padding:10, borderRadius:7, border:`1px dashed ${C.border}`, background:"transparent", color:C.muted, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:C.sans }}>
-              Change photo
-            </button>
-            <input ref={photoInputRef} type="file" accept="image/*" style={{ display:"none" }}
-              onChange={e=>handlePhotoUpload(e.target.files?.[0])} />
+            <div style={{ fontSize:11, color:C.muted }}>{SHADES[shadeIdx].note}</div>
           </div>
 
-          <div style={{ padding:"0 18px 18px", marginTop:"auto" }}>
-            <button onClick={()=>{
-              if (!canvasRef.current || !photo) return;
-              // Composite photo + overlay, download
-              const merged = document.createElement('canvas');
-              const img = new Image();
-              img.onload = () => {
-                merged.width = img.naturalWidth;
-                merged.height = img.naturalHeight;
-                const ctx = merged.getContext('2d');
-                ctx.drawImage(img, 0, 0);
-                ctx.drawImage(canvasRef.current, 0, 0, merged.width, merged.height);
-                const a = document.createElement('a');
-                a.href = merged.toDataURL('image/jpeg', 0.92);
-                a.download = `${activePatient?.id || 'smile'}-preview.jpg`;
-                a.click();
-              };
-              img.src = photo.url;
-            }}
-              disabled={!photo}
-              style={{ width:"100%", padding:"14px", borderRadius:8, border:"none",
-                background:photo?C.teal:C.surface3, color:photo?"white":C.muted,
-                fontSize:14, fontWeight:700, cursor:photo?"pointer":"not-allowed", fontFamily:C.sans }}>
-              ⬇ Export Preview
+          <div style={{ padding:18, borderBottom:`1px solid ${C.border}` }}>
+            <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:10, fontWeight:700 }}>TOOTH FORM</div>
+            {Object.entries(TOOTH_FORMS).map(([k, v]) => (
+              <button key={k} onClick={()=>setForm(k)}
+                style={{ display:"block", width:"100%", textAlign:"left", padding:"11px 14px", borderRadius:7, background:form===k?C.tealDim:"transparent", border:`1px solid ${form===k?C.tealBorder:C.borderSoft}`, color:C.ink, cursor:"pointer", fontFamily:C.sans, marginBottom:6 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <span style={{ fontSize:13, fontWeight:700, color:form===k?C.teal:C.ink }}>{v.label}</span>
+                  <span style={{ fontSize:10, color:C.muted, fontFamily:C.font }}>W:L {v.ratio}</span>
+                </div>
+                <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>{v.note}</div>
+              </button>
+            ))}
+          </div>
+
+          <div style={{ padding:18, borderBottom:`1px solid ${C.border}` }}>
+            <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:10, fontWeight:700 }}>LENGTH ADJUSTMENT</div>
+            <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8 }}>
+              <input type="range" min={-2} max={3} step={0.5} value={lengthAdj}
+                onChange={e=>setLengthAdj(parseFloat(e.target.value))}
+                style={{ flex:1, accentColor:C.teal }}/>
+              <span style={{ fontSize:16, fontFamily:C.font, color:C.teal, fontWeight:700, minWidth:60, textAlign:"right" }}>{lengthAdj>0?'+':''}{lengthAdj}mm</span>
+            </div>
+            <div style={{ fontSize:10, color:C.muted }}>AEP: 1-3mm incisal display at repose</div>
+          </div>
+
+          <div style={{ padding:18, borderBottom:`1px solid ${C.border}` }}>
+            <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:10, fontWeight:700 }}>WHITEN BLEND</div>
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <input type="range" min={0} max={100} value={whiten}
+                onChange={e=>setWhiten(parseInt(e.target.value))}
+                style={{ flex:1, accentColor:C.teal }}/>
+              <span style={{ fontSize:14, fontFamily:C.font, color:C.teal, fontWeight:700, minWidth:50, textAlign:"right" }}>{whiten}%</span>
+            </div>
+          </div>
+
+          <div style={{ padding:18, borderBottom:`1px solid ${C.border}`, fontSize:11, color:C.muted, lineHeight:1.7 }}>
+            <strong style={{ color:C.ink, fontSize:12 }}>Tooth region</strong><br/>
+            Click and drag on the image to redefine the tooth region.
+            {region && <div style={{ marginTop:6, fontFamily:C.font, fontSize:10 }}>
+              {Math.round(region.w)}×{Math.round(region.h)}px @ ({Math.round(region.x)},{Math.round(region.y)})
+            </div>}
+          </div>
+
+          <div style={{ padding:18, flex:1, overflow:"auto" }}>
+            <button onClick={runAIAnalysis} disabled={!image || analyzing}
+              style={{ width:"100%", padding:"14px", borderRadius:8, background:analyzing?C.surface2:C.purple, color:analyzing?C.muted:"white", border:"none", fontSize:14, fontWeight:700, cursor:analyzing||!image?"wait":"pointer", fontFamily:C.sans, marginBottom:14 }}>
+              {analyzing ? "⚡ Analyzing smile..." : "✨ AI Analysis"}
             </button>
+
+            {aiNotes && (
+              <div style={{ padding:14, borderRadius:9, background:verdictColor[aiNotes.parameters_verdict]+"18", border:`1px solid ${verdictColor[aiNotes.parameters_verdict]}50`, fontSize:12, color:C.ink, lineHeight:1.6 }}>
+                <div style={{ fontSize:10, fontFamily:C.font, letterSpacing:2, color:verdictColor[aiNotes.parameters_verdict], marginBottom:8, fontWeight:700, textTransform:"uppercase" }}>
+                  VERDICT · {aiNotes.parameters_verdict}
+                </div>
+                {aiNotes.current_assessment && <div style={{ marginBottom:10 }}><strong>Current:</strong> {aiNotes.current_assessment}</div>}
+                {aiNotes.verdict_reasoning && <div style={{ marginBottom:10 }}>{aiNotes.verdict_reasoning}</div>}
+                {aiNotes.aep_flags?.length > 0 && (
+                  <div style={{ marginBottom:10 }}>
+                    <div style={{ fontSize:10, color:C.amber, fontWeight:700, fontFamily:C.font, letterSpacing:1, marginBottom:4 }}>AEP FLAGS</div>
+                    <ul style={{ margin:0, paddingLeft:18, fontSize:11 }}>{aiNotes.aep_flags.map((f,i)=><li key={i}>{f}</li>)}</ul>
+                  </div>
+                )}
+                {aiNotes.suggested_adjustments?.length > 0 && (
+                  <div>
+                    <div style={{ fontSize:10, color:C.teal, fontWeight:700, fontFamily:C.font, letterSpacing:1, marginBottom:4 }}>ADJUSTMENTS</div>
+                    <ul style={{ margin:0, paddingLeft:18, fontSize:11 }}>{aiNotes.suggested_adjustments.map((f,i)=><li key={i}>{f}</li>)}</ul>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

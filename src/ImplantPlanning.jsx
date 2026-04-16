@@ -1,416 +1,422 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { PATIENTS } from "./patient-cases.js";
 
 const C = {
   bg:"#0d1b2e", surface:"#132338", surface2:"#1a2f48", surface3:"#213858",
   border:"#2a4060", borderSoft:"#1f3352",
   ink:"#f4f7fb", muted:"#9db4cc", light:"#5a7a9b",
-  teal:"#0abab5", tealDim:"rgba(10,186,181,.15)", tealBorder:"rgba(10,186,181,.35)",
-  amber:"#d97706", red:"#dc2626", green:"#059669",
-  purple:"#7c3aed", blue:"#0891b2",
+  teal:"#0abab5", tealDim:"rgba(10,186,181,.12)", tealBorder:"rgba(10,186,181,.35)",
+  amber:"#d97706", amberDim:"rgba(217,119,6,.12)",
+  red:"#dc2626", redDim:"rgba(220,38,38,.12)",
+  green:"#059669", greenDim:"rgba(5,150,105,.12)",
+  blue:"#0891b2", purple:"#7c3aed",
   font:"'DM Mono','JetBrains Mono',monospace",
   sans:"system-ui,-apple-system,sans-serif",
 };
 
-// Standard implant sizes
-const IMPLANT_SYSTEMS = {
-  "straumann-blt":    { name:"Straumann BLT",       diameters:[3.3,4.1,4.8], lengths:[8,10,12,14] },
-  "nobel-active":     { name:"Nobel Active",        diameters:[3.5,4.3,5.0], lengths:[8.5,10,11.5,13,15] },
-  "zimmer-tapered":   { name:"Zimmer Tapered",       diameters:[3.7,4.1,4.7], lengths:[8,10,11.5,13,16] },
-  "biohorizons":      { name:"BioHorizons Tapered",  diameters:[3.4,3.8,4.6], lengths:[9,10.5,12,15] },
+// Common implant sizes (D x L in mm)
+const IMPLANTS = [
+  { brand:"Straumann BLT", sizes:[[3.3,8],[3.3,10],[3.3,12],[4.1,8],[4.1,10],[4.1,12],[4.8,8],[4.8,10]] },
+  { brand:"Nobel Active",  sizes:[[3.5,8.5],[3.5,10],[3.5,11.5],[4.3,8.5],[4.3,10],[4.3,11.5],[5.0,8.5],[5.0,10]] },
+  { brand:"BioHorizons",   sizes:[[3.4,9],[3.4,10.5],[3.8,9],[3.8,10.5],[3.8,12],[4.6,9],[4.6,10.5],[4.6,12]] },
+  { brand:"Dentsply Astra",sizes:[[3.0,9],[3.5,9],[3.5,11],[4.0,9],[4.0,11],[4.5,9],[4.5,11],[5.0,9]] },
+];
+
+const CLEARANCES = {
+  ian:       { label:"IAN canal",          min:2.0, critical:1.0, color:C.red,    info:"Inferior alveolar nerve — ≥2mm for safety" },
+  sinus:     { label:"Sinus floor",        min:1.0, critical:0.5, color:C.amber,  info:"Apical clearance from maxillary sinus" },
+  adjacent:  { label:"Adjacent root",      min:1.5, critical:1.0, color:C.purple, info:"Lateral clearance from neighboring teeth" },
+  buccal:    { label:"Buccal plate",       min:1.5, critical:1.0, color:C.blue,   info:"Prevents dehiscence / buccal exposure" },
+  mental:    { label:"Mental foramen",     min:2.0, critical:1.5, color:C.red,    info:"Anterior loop + foramen itself" },
 };
 
-// Clinical safety margins (mm)
-const SAFETY = {
-  ianDistance:     { min: 2.0, ideal: 2.5, label: "IAN clearance" },
-  sinusFloor:      { min: 1.0, ideal: 2.0, label: "Sinus floor clearance" },
-  adjacentRoot:    { min: 1.5, ideal: 2.0, label: "Adjacent root distance" },
-  buccalBone:      { min: 1.5, ideal: 2.0, label: "Buccal bone thickness" },
-  lingualBone:     { min: 1.5, ideal: 2.0, label: "Lingual bone thickness" },
-};
-
-// Tooth position (upper 1-16, lower 17-32) for site selection
-const SITES = {
-  "upper-posterior": { label:"Upper Posterior (#1-5, 12-16)", constraints:"Sinus floor proximity · bone density type IV common" },
-  "upper-anterior":  { label:"Upper Anterior (#6-11)",        constraints:"Esthetic zone · emergence profile critical · nasal floor" },
-  "lower-anterior":  { label:"Lower Anterior (#22-27)",       constraints:"Limited mesio-distal space · thin buccal plate" },
-  "lower-posterior": { label:"Lower Posterior (#17-21, 28-32)", constraints:"IAN proximity MANDATORY check · cortical bone" },
-};
-
-export default function ImplantPlanning({ activePatient }) {
-  const [image, setImage] = useState(null);
-  const [markers, setMarkers] = useState([]); // { x, y, angle, implantType, length }
-  const [selectedMarker, setSelectedMarker] = useState(null);
-  const [system, setSystem] = useState("straumann-blt");
-  const [diameter, setDiameter] = useState(4.1);
-  const [length, setLength] = useState(10);
-  const [site, setSite] = useState("lower-posterior");
-  const [showSafetyZone, setShowSafetyZone] = useState(true);
-  const [scale, setScale] = useState(null); // mm per pixel
-  const [calibrating, setCalibrating] = useState(false);
-  const [calibPoints, setCalibPoints] = useState([]);
-  const [draggingMarker, setDraggingMarker] = useState(null);
-  const fileRef = useRef(null);
-  const imgRef = useRef(null);
-  const containerRef = useRef(null);
+export default function ImplantPlanning({ navigate, activePatient }) {
   const canvasRef = useRef(null);
+  const imgRef = useRef(null);
 
-  // Auto-load radiograph if patient has one
+  const [image, setImage]         = useState(null);
+  const [imageName, setImageName] = useState("");
+  const [loaded, setLoaded]       = useState(false);
+  const [imgDims, setImgDims]     = useState({ w:0, h:0 });
+
+  const [toothSite, setTooth]     = useState(19);
+  const [brand, setBrand]         = useState("Straumann BLT");
+  const [size, setSize]           = useState([4.1, 10]);
+  const [angle, setAngle]         = useState(0);     // degrees tilt
+  const [pos, setPos]             = useState({ x: 0.5, y: 0.5 }); // normalized 0-1
+  const [draggingImplant, setDI]  = useState(false);
+
+  const [clearances, setClear]    = useState({});
+  const [analyzing, setAnalyzing] = useState(false);
+  const [report, setReport]       = useState(null);
+  const [pxPerMm, setPxPerMm]     = useState(5);   // calibration (default guess)
+
+  // Auto-load any radiograph photo from active patient
   useEffect(() => {
-    if (!activePatient?.files) return;
-    const xrayFile = activePatient.files.find(f => f.name.toLowerCase().includes('xray') || f.name.toLowerCase().includes('cbct') || f.name.toLowerCase().match(/\.(jpg|png|jpeg)$/));
-    if (xrayFile) {
-      const img = new Image();
-      img.onload = () => setImage({ url: img.src, w: img.naturalWidth, h: img.naturalHeight });
-      img.src = `/patient-cases/${xrayFile.name}`;
+    if (activePatient?.photos?.length > 0) {
+      const radiograph = activePatient.photos.find(p => p.type === 'xray' || p.type === 'radiograph');
+      if (radiograph) {
+        setImage(`/patient-cases/${radiograph.file}`);
+        setImageName(radiograph.label);
+      }
     }
-  }, [activePatient]);
+  }, [activePatient?.id]);
 
-  function handleUpload(file) {
-    if (!file) return;
+  // Load image
+  useEffect(() => {
+    if (!image) return;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      imgRef.current = img;
+      setImgDims({ w: img.naturalWidth, h: img.naturalHeight });
+      setLoaded(true);
+    };
+    img.src = image;
+  }, [image]);
+
+  // Draw
+  useEffect(() => {
+    if (!loaded) return;
+    const canvas = canvasRef.current;
+    const img = imgRef.current;
+    if (!canvas || !img) return;
+    const ctx = canvas.getContext('2d');
+    canvas.width = imgDims.w;
+    canvas.height = imgDims.h;
+    ctx.drawImage(img, 0, 0);
+
+    // Draw implant at pos with angle
+    const cx = pos.x * imgDims.w;
+    const cy = pos.y * imgDims.h;
+    const [d, l] = size;
+    const dpx = d * pxPerMm;
+    const lpx = l * pxPerMm;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle * Math.PI / 180);
+
+    // Implant body (tapered cylinder with threads)
+    ctx.strokeStyle = "#e8e8e8";
+    ctx.fillStyle = "rgba(232,232,232,.85)";
+    ctx.lineWidth = 1.5;
+    ctx.shadowColor = "rgba(10,186,181,.6)";
+    ctx.shadowBlur = 12;
+    ctx.fillRect(-dpx/2, -lpx/2, dpx, lpx);
+    ctx.strokeRect(-dpx/2, -lpx/2, dpx, lpx);
+    ctx.shadowBlur = 0;
+
+    // Threads
+    ctx.strokeStyle = "#666";
+    ctx.lineWidth = 0.8;
+    const threadPitch = 0.8 * pxPerMm;
+    for (let y = -lpx/2 + threadPitch; y < lpx/2; y += threadPitch) {
+      ctx.beginPath();
+      ctx.moveTo(-dpx/2, y);
+      ctx.lineTo(dpx/2, y);
+      ctx.stroke();
+    }
+
+    // Apex taper
+    ctx.beginPath();
+    ctx.moveTo(-dpx/2, lpx/2);
+    ctx.lineTo(0, lpx/2 + dpx/2);
+    ctx.lineTo(dpx/2, lpx/2);
+    ctx.fillStyle = "rgba(232,232,232,.85)";
+    ctx.fill();
+    ctx.strokeStyle = "#e8e8e8";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Platform
+    ctx.strokeStyle = "#0abab5";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-dpx/2 - 2, -lpx/2);
+    ctx.lineTo(dpx/2 + 2, -lpx/2);
+    ctx.stroke();
+
+    ctx.restore();
+
+    // Draw safety halo around implant
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle * Math.PI / 180);
+    ctx.strokeStyle = "rgba(10,186,181,.35)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.strokeRect(-dpx/2 - 2*pxPerMm, -lpx/2 - 2*pxPerMm, dpx + 4*pxPerMm, lpx + 4*pxPerMm);
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    // Label
+    ctx.fillStyle = "#0abab5";
+    ctx.font = "bold 16px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(`#${toothSite} · ${brand}`, cx, cy - lpx/2 - 12);
+    ctx.font = "14px 'DM Mono', monospace";
+    ctx.fillText(`Ø${d} × L${l}mm`, cx, cy + lpx/2 + 24);
+
+  }, [loaded, pos, angle, size, brand, toothSite, pxPerMm, imgDims]);
+
+  function handleFile(f) {
+    if (!f) return;
     const reader = new FileReader();
     reader.onload = e => {
-      const img = new Image();
-      img.onload = () => {
-        setImage({ url: e.target.result, w: img.naturalWidth, h: img.naturalHeight });
-        setMarkers([]); setSelectedMarker(null); setScale(null);
-      };
-      img.src = e.target.result;
+      setImage(e.target.result);
+      setImageName(f.name);
+      setLoaded(false);
+      setReport(null);
     };
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(f);
   }
 
-  function handleCanvasClick(e) {
-    if (!imgRef.current) return;
-    const rect = imgRef.current.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
+  function canvasCoords(e) {
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const cx = e.clientX || e.touches?.[0]?.clientX || 0;
+    const cy = e.clientY || e.touches?.[0]?.clientY || 0;
+    return { x: (cx - rect.left) * scaleX, y: (cy - rect.top) * scaleY };
+  }
+  function onDown(e) {
+    e.preventDefault();
+    const { x, y } = canvasCoords(e);
+    setPos({ x: x / imgDims.w, y: y / imgDims.h });
+    setDI(true);
+  }
+  function onMove(e) {
+    if (!draggingImplant) return;
+    const { x, y } = canvasCoords(e);
+    setPos({ x: Math.max(0, Math.min(1, x / imgDims.w)), y: Math.max(0, Math.min(1, y / imgDims.h)) });
+  }
+  function onUp() { setDI(false); }
 
-    if (calibrating) {
-      const newPoints = [...calibPoints, { x, y }];
-      setCalibPoints(newPoints);
-      if (newPoints.length === 2) {
-        // Ask user for known distance
-        const knownMM = parseFloat(prompt("Enter known distance between these 2 points (mm):", "10"));
-        if (knownMM > 0) {
-          const dx = (newPoints[1].x - newPoints[0].x) * rect.width / 100;
-          const dy = (newPoints[1].y - newPoints[0].y) * rect.height / 100;
-          const pixelDist = Math.sqrt(dx*dx + dy*dy);
-          setScale(knownMM / pixelDist); // mm per pixel
-        }
-        setCalibrating(false);
-        setCalibPoints([]);
-      }
-      return;
+  async function runSafetyAnalysis() {
+    if (!image) return;
+    setAnalyzing(true);
+    try {
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = imgDims.w; tempCanvas.height = imgDims.h;
+      tempCanvas.getContext('2d').drawImage(imgRef.current, 0, 0);
+      // Include the implant overlay in image sent to AI
+      const canvas = canvasRef.current;
+      const overlay = canvas.toDataURL('image/jpeg', 0.85);
+      const b64 = overlay.split(',')[1];
+
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1500,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } },
+              { type: "text", text: `You are a board-certified oral surgeon reviewing a proposed implant placement on a radiograph.
+
+PROPOSED PLACEMENT:
+- Tooth site: #${toothSite}
+- Implant: ${brand} Ø${size[0]}mm × L${size[1]}mm
+- Angulation: ${angle}°
+
+CRITICAL: Only report safety concerns that are actually visible in the radiograph. Do not invent findings. If the implant appears inadequately placed or too close to anatomic structures, state it explicitly.
+
+Evaluate these clearances if assessable from the radiograph:
+- IAN canal (≥2mm safe, ≥1mm critical minimum)
+- Maxillary sinus (≥1mm preferred)
+- Adjacent roots (≥1.5mm)
+- Buccal/lingual plates
+- Mental foramen (for mandibular premolars)
+
+Return JSON only:
+{
+  "verdict": "safe|caution|unsafe|cannot_assess",
+  "verdict_reason": "1-2 sentence summary",
+  "clearances": {
+    "ian_mm": number or null,
+    "sinus_mm": number or null,
+    "adjacent_mesial_mm": number or null,
+    "adjacent_distal_mm": number or null,
+    "buccal_mm": number or null
+  },
+  "angulation_assessment": "string",
+  "bone_quality_estimate": "D1|D2|D3|D4|cannot_assess",
+  "red_flags": ["specific concerns"],
+  "recommendations": ["actionable changes"],
+  "alternative_sizes": ["suggest other sizes if current is suboptimal"]
+}` }
+            ]
+          }]
+        })
+      });
+      const data = await res.json();
+      const text = data.content?.map(i => i.text || "").join("\n") || "";
+      const clean = text.replace(/```json\n?|```\n?/g, '').trim();
+      setReport(JSON.parse(clean));
+    } catch (e) {
+      setReport({ verdict:"error", verdict_reason: e.message });
     }
-
-    // Place new implant marker
-    const newMarker = {
-      id: Date.now(),
-      x, y,
-      angle: 0,
-      system, diameter, length,
-      site,
-    };
-    setMarkers([...markers, newMarker]);
-    setSelectedMarker(newMarker.id);
+    setAnalyzing(false);
   }
 
-  function updateMarker(id, updates) {
-    setMarkers(markers.map(m => m.id === id ? { ...m, ...updates } : m));
-  }
-  function deleteMarker(id) {
-    setMarkers(markers.filter(m => m.id !== id));
-    if (selectedMarker === id) setSelectedMarker(null);
-  }
+  const verdictColor = {
+    'safe': C.green, 'caution': C.amber, 'unsafe': C.red, 'cannot_assess': C.muted, 'error': C.red,
+  };
 
-  const current = markers.find(m => m.id === selectedMarker);
+  const currentBrand = IMPLANTS.find(b => b.brand === brand);
 
   return (
     <div style={{ flex:1, display:"flex", flexDirection:"column", background:C.bg, color:C.ink, fontFamily:C.sans, overflow:"hidden" }}>
-      {/* Toolbar */}
-      <div style={{ padding:"16px 24px", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", gap:16, flexWrap:"wrap", flexShrink:0, background:C.surface }}>
+      {/* Header */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 22px", borderBottom:`1px solid ${C.border}`, gap:14, flexWrap:"wrap", flexShrink:0 }}>
         <div>
           <div style={{ fontSize:22, fontWeight:800, letterSpacing:"-.02em" }}>Implant Planning</div>
-          <div style={{ fontSize:13, color:C.muted, marginTop:2 }}>
-            {image ? (scale ? `Scale: ${scale.toFixed(3)}mm/px · ${markers.length} implant${markers.length!==1?'s':''} planned` : "⚠ Uncalibrated — set scale for accurate measurements") : "Upload CBCT slice, panoramic, or periapical radiograph"}
+          <div style={{ fontSize:13, color:C.muted, marginTop:3 }}>
+            {imageName ? `${imageName} · Tooth #${toothSite}` : "Load a radiograph to plan placement"}
           </div>
         </div>
-        <div style={{ flex:1 }} />
-        {image && (
-          <>
-            <button onClick={()=>{setCalibrating(true); setCalibPoints([]);}}
-              style={{ padding:"10px 16px", borderRadius:7, fontSize:13, fontWeight:700, border:"none",
-                background: calibrating ? C.amber : C.surface2, color: calibrating ? "white" : C.muted, cursor:"pointer", fontFamily:C.sans }}>
-              📏 {calibrating ? `Calibrating (${calibPoints.length}/2)` : "Calibrate scale"}
-            </button>
-            <button onClick={()=>setShowSafetyZone(s=>!s)}
-              style={{ padding:"10px 16px", borderRadius:7, fontSize:13, fontWeight:700, border:"none",
-                background: showSafetyZone ? C.teal : C.surface2, color: showSafetyZone ? "white" : C.muted, cursor:"pointer", fontFamily:C.sans }}>
-              {showSafetyZone?"✓ Safety":"Safety"}
-            </button>
-          </>
-        )}
+        <div style={{ display:"flex", gap:10 }}>
+          <label style={{ padding:"10px 16px", borderRadius:8, background:C.surface2, color:C.muted, border:`1px solid ${C.border}`, fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:C.sans }}>
+            📸 Upload Radiograph
+            <input type="file" accept="image/*" style={{ display:"none" }} onChange={e=>handleFile(e.target.files?.[0])}/>
+          </label>
+        </div>
       </div>
 
-      <div style={{ flex:1, display:"flex", overflow:"hidden" }}>
-        {/* Image viewport */}
-        <div ref={containerRef} style={{ flex:1, position:"relative", background:"#000", display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden" }}>
+      <div style={{ flex:1, display:"flex", minHeight:0, flexWrap:"wrap" }}>
+        {/* Canvas */}
+        <div style={{ flex:"1 1 500px", minWidth:300, display:"flex", alignItems:"center", justifyContent:"center", padding:20, background:"#000", overflow:"auto" }}>
           {!image && (
-            <div style={{ textAlign:"center", color:C.muted, padding:30, zIndex:2 }}>
-              <div style={{ fontSize:64, marginBottom:16 }}>🔩</div>
-              <div style={{ fontSize:18, fontWeight:700, marginBottom:8, color:C.ink }}>Upload Radiograph</div>
-              <div style={{ fontSize:13, marginBottom:24 }}>CBCT slice, panoramic, PA, or bitewing</div>
-              <button onClick={()=>fileRef.current?.click()}
-                style={{ padding:"14px 24px", borderRadius:8, fontSize:15, fontWeight:700, border:"none", background:C.teal, color:"white", cursor:"pointer", fontFamily:C.sans }}>
-                Choose Image
-              </button>
-              <input ref={fileRef} type="file" accept="image/*" style={{ display:"none" }}
-                onChange={e=>handleUpload(e.target.files?.[0])} />
+            <div style={{ textAlign:"center", color:C.muted }}>
+              <div style={{ fontSize:48, marginBottom:14 }}>🦷</div>
+              <div style={{ fontSize:15 }}>Upload a panoramic or periapical radiograph</div>
+              <div style={{ fontSize:12, marginTop:6 }}>Drag the implant to position · rotate to adjust angulation</div>
             </div>
           )}
           {image && (
-            <div style={{ position:"relative", maxWidth:"100%", maxHeight:"100%", display:"inline-block" }}>
-              <img ref={imgRef} src={image.url} alt="radiograph"
-                onClick={handleCanvasClick}
-                style={{ display:"block", maxWidth:"100%", maxHeight:"calc(100vh - 200px)", objectFit:"contain", cursor: calibrating ? "crosshair" : "crosshair" }} />
-
-              {/* Calibration points */}
-              {calibPoints.map((p,i) => (
-                <div key={i} style={{ position:"absolute", left:`${p.x}%`, top:`${p.y}%`, transform:"translate(-50%,-50%)", pointerEvents:"none" }}>
-                  <div style={{ width:12, height:12, borderRadius:"50%", background:C.amber, border:"2px solid white", boxShadow:`0 0 0 3px ${C.amber}60` }}/>
-                  <div style={{ position:"absolute", top:-20, left:14, fontSize:11, color:C.amber, fontFamily:C.font, fontWeight:700, whiteSpace:"nowrap" }}>P{i+1}</div>
-                </div>
-              ))}
-              {calibPoints.length === 2 && (
-                <svg style={{ position:"absolute", inset:0, width:"100%", height:"100%", pointerEvents:"none" }}>
-                  <line x1={`${calibPoints[0].x}%`} y1={`${calibPoints[0].y}%`}
-                        x2={`${calibPoints[1].x}%`} y2={`${calibPoints[1].y}%`}
-                        stroke={C.amber} strokeWidth="2" strokeDasharray="4 3" />
-                </svg>
-              )}
-
-              {/* Implant markers */}
-              {markers.map(m => (
-                <ImplantMarker
-                  key={m.id}
-                  marker={m}
-                  selected={selectedMarker === m.id}
-                  onClick={(e)=>{e.stopPropagation(); setSelectedMarker(m.id);}}
-                  showSafetyZone={showSafetyZone}
-                  scale={scale}
-                  imgRef={imgRef}
-                  onMove={(x,y)=>updateMarker(m.id, {x,y})}
-                />
-              ))}
-            </div>
+            <canvas ref={canvasRef}
+              onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
+              onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}
+              style={{ maxWidth:"100%", maxHeight:"100%", objectFit:"contain", borderRadius:8, cursor:draggingImplant?"grabbing":"crosshair", touchAction:"none" }}/>
           )}
         </div>
 
-        {/* Right panel */}
-        <div style={{ width:340, background:C.surface, borderLeft:`1px solid ${C.border}`, overflow:"auto", flexShrink:0 }}>
-          <div style={{ padding:18 }}>
-            <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:12, fontWeight:700 }}>IMPLANT SELECTION</div>
-
-            <div style={{ marginBottom:14 }}>
-              <div style={{ fontSize:12, color:C.muted, marginBottom:6 }}>System</div>
-              <select value={system} onChange={e=>setSystem(e.target.value)}
-                style={{ width:"100%", padding:"10px 12px", borderRadius:7, border:`1px solid ${C.border}`, background:C.surface2, color:C.ink, fontSize:13, fontFamily:C.sans, outline:"none" }}>
-                {Object.entries(IMPLANT_SYSTEMS).map(([k,v]) => <option key={k} value={k}>{v.name}</option>)}
-              </select>
-            </div>
-
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:14 }}>
-              <div>
-                <div style={{ fontSize:12, color:C.muted, marginBottom:6 }}>Ø mm</div>
-                <select value={diameter} onChange={e=>setDiameter(+e.target.value)}
-                  style={{ width:"100%", padding:"10px 12px", borderRadius:7, border:`1px solid ${C.border}`, background:C.surface2, color:C.ink, fontSize:13, fontFamily:C.sans, outline:"none" }}>
-                  {IMPLANT_SYSTEMS[system].diameters.map(d => <option key={d} value={d}>{d}mm</option>)}
-                </select>
-              </div>
-              <div>
-                <div style={{ fontSize:12, color:C.muted, marginBottom:6 }}>L mm</div>
-                <select value={length} onChange={e=>setLength(+e.target.value)}
-                  style={{ width:"100%", padding:"10px 12px", borderRadius:7, border:`1px solid ${C.border}`, background:C.surface2, color:C.ink, fontSize:13, fontFamily:C.sans, outline:"none" }}>
-                  {IMPLANT_SYSTEMS[system].lengths.map(l => <option key={l} value={l}>{l}mm</option>)}
-                </select>
-              </div>
-            </div>
-
-            <div style={{ marginBottom:18 }}>
-              <div style={{ fontSize:12, color:C.muted, marginBottom:6 }}>Site</div>
-              <select value={site} onChange={e=>setSite(e.target.value)}
-                style={{ width:"100%", padding:"10px 12px", borderRadius:7, border:`1px solid ${C.border}`, background:C.surface2, color:C.ink, fontSize:13, fontFamily:C.sans, outline:"none" }}>
-                {Object.entries(SITES).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
-              </select>
-              <div style={{ fontSize:10, color:C.light, marginTop:6, lineHeight:1.5 }}>{SITES[site].constraints}</div>
-            </div>
-
-            <div style={{ padding:"10px 14px", borderRadius:7, background:C.tealDim, border:`1px solid ${C.tealBorder}`, fontSize:12, color:C.muted, lineHeight:1.6, marginBottom:18 }}>
-              {image ? "Click the radiograph to place an implant marker." : "Upload a radiograph first."}
-            </div>
-
-            {/* Safety rules */}
-            <div style={{ fontSize:11, fontFamily:C.font, color:C.amber, letterSpacing:2, marginBottom:10, fontWeight:700 }}>SAFETY CHECKS</div>
-            {Object.entries(SAFETY).map(([k,v]) => (
-              <div key={k} style={{ padding:"8px 0", borderBottom:`1px solid ${C.borderSoft}`, fontSize:12 }}>
-                <div style={{ display:"flex", justifyContent:"space-between", color:C.ink }}>
-                  <span>{v.label}</span>
-                  <span style={{ fontFamily:C.font, color:C.amber, fontWeight:700 }}>≥{v.min}mm</span>
-                </div>
-                <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>Ideal: {v.ideal}mm</div>
-              </div>
-            ))}
+        {/* Controls */}
+        <div style={{ width:340, minWidth:300, borderLeft:`1px solid ${C.border}`, background:C.surface, display:"flex", flexDirection:"column", flexShrink:0, overflow:"auto" }}>
+          {/* Site */}
+          <div style={{ padding:18, borderBottom:`1px solid ${C.border}` }}>
+            <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:10, fontWeight:700 }}>TOOTH SITE</div>
+            <input type="number" min={1} max={32} value={toothSite}
+              onChange={e=>setTooth(parseInt(e.target.value) || 1)}
+              style={{ width:"100%", padding:"12px 14px", borderRadius:8, border:`1px solid ${C.border}`, background:C.surface2, color:C.ink, fontSize:18, fontFamily:C.font, fontWeight:700, outline:"none", textAlign:"center" }}/>
           </div>
 
-          {/* Planned implants list */}
-          {markers.length > 0 && (
-            <div style={{ padding:"0 18px 18px" }}>
-              <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:10, fontWeight:700 }}>PLANNED ({markers.length})</div>
-              {markers.map((m, i) => (
-                <div key={m.id}
-                  onClick={()=>setSelectedMarker(m.id)}
-                  style={{ padding:"10px 12px", marginBottom:6, borderRadius:7,
-                    background: selectedMarker===m.id ? C.tealDim : C.surface2,
-                    border:`1.5px solid ${selectedMarker===m.id ? C.teal : C.border}`,
-                    cursor:"pointer", display:"flex", alignItems:"center", gap:10 }}>
-                  <div style={{ width:8, height:8, borderRadius:"50%", background:C.teal, flexShrink:0 }}/>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:12, fontWeight:700, color:C.ink }}>Implant {i+1}</div>
-                    <div style={{ fontSize:10, color:C.muted, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                      {IMPLANT_SYSTEMS[m.system].name} · Ø{m.diameter} × {m.length}mm
-                    </div>
-                  </div>
-                  <button onClick={(e)=>{e.stopPropagation(); deleteMarker(m.id);}}
-                    style={{ padding:"4px 7px", borderRadius:4, fontSize:10, border:"none", background:"rgba(220,38,38,.15)", color:C.red, cursor:"pointer" }}>
-                    ✕
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+          {/* Brand */}
+          <div style={{ padding:18, borderBottom:`1px solid ${C.border}` }}>
+            <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:10, fontWeight:700 }}>IMPLANT BRAND</div>
+            <select value={brand} onChange={e=>{setBrand(e.target.value); setSize(IMPLANTS.find(i=>i.brand===e.target.value).sizes[0]);}}
+              style={{ width:"100%", padding:"12px 14px", borderRadius:8, border:`1px solid ${C.border}`, background:C.surface2, color:C.ink, fontSize:14, fontFamily:C.sans, outline:"none" }}>
+              {IMPLANTS.map(b => <option key={b.brand}>{b.brand}</option>)}
+            </select>
+          </div>
 
-          {/* Selected marker details */}
-          {current && (
-            <div style={{ padding:"0 18px 18px" }}>
-              <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:10, fontWeight:700 }}>SELECTED</div>
-              <div style={{ padding:14, borderRadius:8, background:C.surface2, border:`1px solid ${C.tealBorder}` }}>
-                <div style={{ marginBottom:10 }}>
-                  <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>Angulation</div>
-                  <input type="range" min="-30" max="30" step="1" value={current.angle}
-                    onChange={e=>updateMarker(current.id, {angle:+e.target.value})}
-                    style={{ width:"100%", accentColor:C.teal, height:6 }}/>
-                  <div style={{ fontSize:11, color:C.teal, fontFamily:C.font, textAlign:"right", fontWeight:700 }}>{current.angle}°</div>
-                </div>
-                <button onClick={()=>updateMarker(current.id, { system, diameter, length, site })}
-                  style={{ width:"100%", padding:10, borderRadius:6, border:`1px solid ${C.tealBorder}`, background:"transparent", color:C.teal, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:C.sans }}>
-                  Apply current specs to this implant
-                </button>
-              </div>
+          {/* Size */}
+          <div style={{ padding:18, borderBottom:`1px solid ${C.border}` }}>
+            <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:10, fontWeight:700 }}>DIAMETER × LENGTH</div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:6 }}>
+              {currentBrand?.sizes.map((s, i) => {
+                const active = s[0]===size[0] && s[1]===size[1];
+                return (
+                  <button key={i} onClick={()=>setSize(s)}
+                    style={{ padding:"9px 5px", borderRadius:6, border:`1.5px solid ${active?C.teal:C.border}`, background:active?C.tealDim:C.surface2, color:active?C.teal:C.muted, fontSize:11, fontFamily:C.font, fontWeight:700, cursor:"pointer" }}>
+                    {s[0]}×{s[1]}
+                  </button>
+                );
+              })}
             </div>
-          )}
+          </div>
+
+          {/* Angle */}
+          <div style={{ padding:18, borderBottom:`1px solid ${C.border}` }}>
+            <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:10, fontWeight:700 }}>ANGULATION</div>
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <input type="range" min={-30} max={30} step={1} value={angle}
+                onChange={e=>setAngle(parseInt(e.target.value))}
+                style={{ flex:1, accentColor:C.teal }}/>
+              <span style={{ fontSize:15, fontFamily:C.font, color:C.teal, fontWeight:700, minWidth:50, textAlign:"right" }}>{angle}°</span>
+            </div>
+          </div>
+
+          {/* Scale */}
+          <div style={{ padding:18, borderBottom:`1px solid ${C.border}` }}>
+            <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:10, fontWeight:700 }}>SCALE (PX/MM)</div>
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <input type="range" min={2} max={30} step={0.5} value={pxPerMm}
+                onChange={e=>setPxPerMm(parseFloat(e.target.value))}
+                style={{ flex:1, accentColor:C.teal }}/>
+              <span style={{ fontSize:14, fontFamily:C.font, color:C.teal, fontWeight:700, minWidth:50, textAlign:"right" }}>{pxPerMm}</span>
+            </div>
+            <div style={{ fontSize:10, color:C.muted, marginTop:6 }}>Adjust until implant overlay matches known anatomy</div>
+          </div>
+
+          {/* AI analysis */}
+          <div style={{ padding:18 }}>
+            <button onClick={runSafetyAnalysis} disabled={!image || analyzing}
+              style={{ width:"100%", padding:"14px", borderRadius:8, background:analyzing?C.surface2:C.red, color:analyzing?C.muted:"white", border:"none", fontSize:14, fontWeight:700, cursor:analyzing||!image?"wait":"pointer", fontFamily:C.sans, marginBottom:14 }}>
+              {analyzing ? "⚡ Analyzing safety..." : "🛡 Run Safety Analysis"}
+            </button>
+
+            {report && (
+              <div style={{ padding:14, borderRadius:9, background:verdictColor[report.verdict]+"18", border:`1px solid ${verdictColor[report.verdict]}55`, fontSize:12, color:C.ink, lineHeight:1.7 }}>
+                <div style={{ fontSize:11, fontFamily:C.font, letterSpacing:2, color:verdictColor[report.verdict], marginBottom:10, fontWeight:700, textTransform:"uppercase" }}>
+                  {report.verdict}
+                </div>
+                {report.verdict_reason && <div style={{ marginBottom:10 }}>{report.verdict_reason}</div>}
+
+                {report.clearances && (
+                  <div style={{ marginBottom:10, fontSize:11 }}>
+                    <div style={{ color:C.teal, fontFamily:C.font, fontSize:10, marginBottom:4, fontWeight:700 }}>CLEARANCES</div>
+                    {Object.entries(report.clearances).filter(([k,v]) => v !== null && v !== undefined).map(([k,v]) => (
+                      <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"2px 0" }}>
+                        <span style={{ color:C.muted, textTransform:"capitalize" }}>{k.replace(/_mm$/,'').replace(/_/g,' ')}</span>
+                        <span style={{ fontFamily:C.font, color:v < 1.5 ? C.red : v < 2 ? C.amber : C.green }}>{v}mm</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {report.angulation_assessment && <div style={{ marginBottom:10, fontSize:11 }}><strong>Angulation:</strong> {report.angulation_assessment}</div>}
+                {report.bone_quality_estimate && report.bone_quality_estimate !== 'cannot_assess' && (
+                  <div style={{ marginBottom:10, fontSize:11 }}><strong>Bone quality:</strong> {report.bone_quality_estimate}</div>
+                )}
+
+                {report.red_flags?.length > 0 && (
+                  <div style={{ marginBottom:10 }}>
+                    <div style={{ fontSize:10, color:C.red, fontWeight:700, fontFamily:C.font, letterSpacing:1, marginBottom:4 }}>RED FLAGS</div>
+                    <ul style={{ margin:0, paddingLeft:18, fontSize:11 }}>{report.red_flags.map((f,i)=><li key={i}>{f}</li>)}</ul>
+                  </div>
+                )}
+                {report.recommendations?.length > 0 && (
+                  <div style={{ marginBottom:10 }}>
+                    <div style={{ fontSize:10, color:C.teal, fontWeight:700, fontFamily:C.font, letterSpacing:1, marginBottom:4 }}>RECOMMENDATIONS</div>
+                    <ul style={{ margin:0, paddingLeft:18, fontSize:11 }}>{report.recommendations.map((f,i)=><li key={i}>{f}</li>)}</ul>
+                  </div>
+                )}
+                {report.alternative_sizes?.length > 0 && (
+                  <div>
+                    <div style={{ fontSize:10, color:C.purple, fontWeight:700, fontFamily:C.font, letterSpacing:1, marginBottom:4 }}>ALTERNATIVE SIZES</div>
+                    <ul style={{ margin:0, paddingLeft:18, fontSize:11 }}>{report.alternative_sizes.map((f,i)=><li key={i}>{f}</li>)}</ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function ImplantMarker({ marker, selected, onClick, showSafetyZone, scale, imgRef, onMove }) {
-  const [dragging, setDragging] = useState(false);
-
-  function onDown(e) {
-    e.stopPropagation();
-    setDragging(true);
-    onClick(e);
-  }
-  useEffect(() => {
-    if (!dragging) return;
-    const onMoveE = (e) => {
-      if (!imgRef.current) return;
-      const rect = imgRef.current.getBoundingClientRect();
-      const t = e.touches ? e.touches[0] : e;
-      const x = Math.max(0, Math.min(100, ((t.clientX - rect.left) / rect.width) * 100));
-      const y = Math.max(0, Math.min(100, ((t.clientY - rect.top) / rect.height) * 100));
-      onMove(x, y);
-    };
-    const onUp = () => setDragging(false);
-    window.addEventListener('mousemove', onMoveE);
-    window.addEventListener('mouseup', onUp);
-    window.addEventListener('touchmove', onMoveE, {passive:false});
-    window.addEventListener('touchend', onUp);
-    return () => {
-      window.removeEventListener('mousemove', onMoveE);
-      window.removeEventListener('mouseup', onUp);
-      window.removeEventListener('touchmove', onMoveE);
-      window.removeEventListener('touchend', onUp);
-    };
-  }, [dragging, imgRef, onMove]);
-
-  // Implant as vertical cylinder with threads
-  const implantWidth = scale ? (marker.diameter / scale) : 10;  // in px
-  const implantLength = scale ? (marker.length / scale) : 40;
-
-  // SVG implant shape
-  return (
-    <div
-      onMouseDown={onDown}
-      onTouchStart={onDown}
-      style={{
-        position:"absolute",
-        left:`${marker.x}%`, top:`${marker.y}%`,
-        transform:`translate(-50%, -50%) rotate(${marker.angle}deg)`,
-        cursor: dragging ? "grabbing" : "grab",
-        touchAction:"none",
-      }}>
-      {/* Safety zone halo */}
-      {showSafetyZone && (
-        <div style={{
-          position:"absolute", left:"50%", top:"50%",
-          transform:"translate(-50%,-50%)",
-          width: implantWidth + 30, height: implantLength + 30,
-          borderRadius:"50%",
-          background: selected ? "rgba(10,186,181,0.18)" : "rgba(10,186,181,0.1)",
-          border: `1px dashed ${C.tealBorder}`,
-          pointerEvents:"none",
-        }}/>
-      )}
-      {/* Implant body */}
-      <svg width={implantWidth + 10} height={implantLength + 10} style={{ display:"block", overflow:"visible" }}>
-        <defs>
-          <linearGradient id={`implant-${marker.id}`} x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#8a9aaa"/>
-            <stop offset="40%" stopColor="#ccd4dc"/>
-            <stop offset="60%" stopColor="#dde4ea"/>
-            <stop offset="100%" stopColor="#8a9aaa"/>
-          </linearGradient>
-        </defs>
-        {/* Body with threads */}
-        <rect x="5" y="5" width={implantWidth} height={implantLength}
-          fill={`url(#implant-${marker.id})`}
-          stroke={selected ? C.teal : "rgba(255,255,255,0.5)"}
-          strokeWidth={selected ? 2 : 1}
-          rx={implantWidth/6}
-        />
-        {/* Thread lines */}
-        {Array.from({ length: Math.max(2, Math.floor(implantLength / 4)) }).map((_, i) => (
-          <line key={i}
-            x1={5} y1={8 + i*4}
-            x2={5 + implantWidth} y2={8 + i*4}
-            stroke="rgba(0,0,0,0.3)" strokeWidth="0.8"
-          />
-        ))}
-        {/* Apex pointer */}
-        <polygon
-          points={`5,${5+implantLength} ${5+implantWidth},${5+implantLength} ${5+implantWidth/2},${5+implantLength+5}`}
-          fill={`url(#implant-${marker.id})`}
-          stroke={selected ? C.teal : "rgba(255,255,255,0.5)"}
-          strokeWidth={selected ? 2 : 1}
-        />
-      </svg>
-      {selected && (
-        <div style={{ position:"absolute", top:-24, left:"50%", transform:"translateX(-50%)", fontSize:10, fontFamily:C.font, color:"white", background:C.teal, padding:"2px 8px", borderRadius:4, whiteSpace:"nowrap", fontWeight:700 }}>
-          Ø{marker.diameter} × {marker.length}mm
-        </div>
-      )}
     </div>
   );
 }

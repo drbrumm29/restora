@@ -1,186 +1,299 @@
 import { useState } from "react";
+import { PATIENTS } from "./patient-cases.js";
 
 const C = {
   bg:"#0d1b2e", surface:"#132338", surface2:"#1a2f48", surface3:"#213858",
   border:"#2a4060", borderSoft:"#1f3352",
   ink:"#f4f7fb", muted:"#9db4cc", light:"#5a7a9b",
-  teal:"#0abab5", tealDim:"rgba(10,186,181,.15)", tealBorder:"rgba(10,186,181,.35)",
-  amber:"#d97706", red:"#dc2626", green:"#059669",
-  purple:"#7c3aed", blue:"#0891b2", gold:"#b8860b",
+  teal:"#0abab5", tealDim:"rgba(10,186,181,.12)", tealBorder:"rgba(10,186,181,.35)",
+  amber:"#d97706", amberDim:"rgba(217,119,6,.12)",
+  red:"#dc2626", green:"#059669", blue:"#0891b2", purple:"#7c3aed", purpleDim:"rgba(124,58,237,.12)",
   font:"'DM Mono','JetBrains Mono',monospace",
   sans:"system-ui,-apple-system,sans-serif",
 };
 
-const PROSTHESIS_TYPES = {
-  "fp1": {
-    name: "FP1 — Fixed Prosthesis, Natural Emergence",
-    color: C.teal,
-    description: "Replaces natural crowns only — looks like natural teeth emerging from gingiva",
-    indications: ["Minimal bone/soft tissue loss", "High smile line", "Esthetic zone cases", "Young patients"],
-    challenges: ["Requires adequate bone volume", "Tissue management critical", "Higher cost per unit"],
-    implants: "Typically 6-8 implants per arch",
-    material: "Zirconia with ceramic layering, or monolithic zirconia",
+// Prosthesis classifications
+const TYPES = [
+  {
+    id: "FP1",
+    label: "FP1 — Fixed, replaces crowns only",
+    cost: "$$$$",
+    when: "Minimal bone loss, ideal ridge, good lip support from native tissue",
+    pros: ["Best esthetics", "Natural emergence", "Easiest hygiene"],
+    cons: ["Requires excellent bone/soft tissue", "Not suitable for severe atrophy"],
+    fit: "Ideal when <3mm vertical defect and patient has normal lip support"
   },
-  "fp2": {
-    name: "FP2 — Fixed Prosthesis, Elongated Teeth",
-    color: C.blue,
-    description: "Replaces crowns + some tissue — teeth appear elongated beyond natural CEJ",
-    indications: ["Moderate bone loss", "Low-to-medium smile line", "Cost-conscious", "Posterior cases"],
-    challenges: ["Hygiene access", "Can look unnatural on high smile line", "Requires good vertical dimension"],
-    implants: "4-6 implants per arch",
-    material: "Titanium bar + zirconia, or monolithic zirconia",
+  {
+    id: "FP2",
+    label: "FP2 — Fixed, replaces crowns + some tissue",
+    cost: "$$$",
+    when: "Moderate ridge loss, high smile line not an issue",
+    pros: ["Compromise between FP1 and FP3", "Works when pink shows"],
+    cons: ["Long teeth look may be visible on smile", "Hygiene challenging at transitions"],
+    fit: "Patient with ridge atrophy but low-to-medium smile line"
   },
-  "fp3": {
-    name: "FP3 — Fixed Prosthesis with Pink",
-    color: C.purple,
-    description: "Replaces teeth + significant gingival tissue using pink acrylic or ceramic",
-    indications: ["Significant bone/tissue loss", "Low smile line preferred", "Budget constraints", "All-on-X conversion"],
-    challenges: ["Visible transition line risk", "Pink ceramic matching", "Hygiene critical"],
-    implants: "4-6 implants per arch (common: All-on-4)",
-    material: "Titanium bar + acrylic/composite teeth with pink gingiva",
+  {
+    id: "FP3",
+    label: "FP3 — Fixed hybrid, replaces crowns + pink",
+    cost: "$$",
+    when: "Severe ridge atrophy, needs lip support restoration",
+    pros: ["Restores vertical dimension", "Supports lip", "Most versatile"],
+    cons: ["Requires restorative space (≥15mm)", "Speech adaptation", "Hygiene access critical"],
+    fit: "Atrophic ridge with compromised lip support; patient can accept transition line"
   },
-};
-
-const WORKFLOW_STEPS = [
-  { num:1, title:"Diagnostic Records",  items:["CBCT scan", "Intraoral scan (upper + lower)", "Facial photos", "Bite registration"] },
-  { num:2, title:"Treatment Planning",  items:["Determine prosthesis type", "Implant number/position", "Smile design + wax-up", "Surgical guide design"] },
-  { num:3, title:"Surgical Phase",       items:["Implant placement (guided)", "Immediate temporary (if applicable)", "Healing phase 3-6mo", "Soft tissue management"] },
-  { num:4, title:"Final Prosthesis",    items:["Final impressions/scans", "Try-in + verification jig", "Bite registration", "Final delivery + adjustment"] },
+  {
+    id: "RP4",
+    label: "RP4 — Removable, implant-bar retained",
+    cost: "$$",
+    when: "Limited implants (2-4), wants removable cleaning",
+    pros: ["Removable for cleaning", "Economic with fewer implants", "Tissue support shared"],
+    cons: ["Bulkier", "Less retention than fixed", "Bar maintenance"],
+    fit: "Budget/anatomy-limited; patient prefers removable option"
+  },
+  {
+    id: "RP5",
+    label: "RP5 — Overdenture, stud/locator retained",
+    cost: "$",
+    when: "2-4 implants, primarily tissue-supported",
+    pros: ["Most economical implant option", "Simple fabrication", "Easy repair"],
+    cons: ["Retention wears (annual attachment change)", "Still rocks on tissue", "Less secure"],
+    fit: "Edentulous patient with limited budget but wanting implant retention"
+  },
 ];
 
-export default function FullArchScreen({ activePatient }) {
-  const [selectedType, setSelectedType] = useState("fp1");
-  const [arch, setArch] = useState("upper");  // upper | lower | both
-  const [implantCount, setImplantCount] = useState(6);
-  const [material, setMaterial] = useState("monolithic-zirconia");
+const WORKFLOWS = {
+  "analog":    { label:"Analog conventional", time:"6-8 weeks", visits:"5-6" },
+  "digital":   { label:"Full-digital (IOS + CAD)", time:"4-5 weeks", visits:"3-4" },
+  "immediate": { label:"Immediate load (same-day)", time:"1 day + finals in 4mo", visits:"2 + 1" },
+  "teethinaday": { label:"Teeth-in-a-day (all-on-X)", time:"Surgery → PMMA same day, zirconia at 4-6mo", visits:"2-3" },
+};
 
-  const current = PROSTHESIS_TYPES[selectedType];
+export default function FullArchScreen({ navigate, activePatient }) {
+  const [arch, setArch]       = useState("upper");
+  const [implants, setImpl]   = useState(6);
+  const [type, setType]       = useState("FP3");
+  const [workflow, setWF]     = useState("teethinaday");
+  const [ridge, setRidge]     = useState("atrophic");
+  const [smileline, setSL]    = useState("medium");
+  const [opposing, setOpp]    = useState("natural");
+  const [material, setMat]    = useState("Zirconia monolithic");
+
+  const selectedType = TYPES.find(t => t.id === type);
+  const selectedWF = WORKFLOWS[workflow];
+
+  // Provide recommendations based on inputs
+  const recommendations = [];
+  if (ridge === "atrophic" && (type === "FP1" || type === "FP2")) {
+    recommendations.push({ level:"warning", text:`Atrophic ridge typically contraindicates ${type}. Consider FP3.` });
+  }
+  if (ridge === "ideal" && type === "FP3") {
+    recommendations.push({ level:"info", text:"Ideal ridge can support FP1. FP3 still works but may overbuild." });
+  }
+  if (smileline === "high" && type === "FP2") {
+    recommendations.push({ level:"warning", text:"High smile line + FP2 = visible transition. Consider FP1 or orthognathic/crown lengthening first." });
+  }
+  if (implants < 4 && arch === "upper" && type !== "RP5") {
+    recommendations.push({ level:"warning", text:"Upper arch typically needs ≥4 implants for fixed. Consider RP4/RP5 or add implants." });
+  }
+  if (implants < 4 && arch === "lower" && (type === "FP1" || type === "FP2" || type === "FP3")) {
+    recommendations.push({ level:"warning", text:"Lower arch fixed typically requires ≥4 implants. Consider more implants or removable option." });
+  }
+  if (opposing === "natural" && material === "Zirconia monolithic") {
+    recommendations.push({ level:"info", text:"Monolithic zirconia opposing natural dentition may cause wear. Consider layered zirconia or polish carefully." });
+  }
+  if (workflow === "immediate" && implants < 4) {
+    recommendations.push({ level:"warning", text:"Immediate load requires ≥4 splinted implants with primary stability >35 Ncm each." });
+  }
 
   return (
-    <div style={{ flex:1, overflow:"auto", background:C.bg, color:C.ink, fontFamily:C.sans, padding:"28px 24px 100px" }}>
-      <div style={{ maxWidth:1100, margin:"0 auto" }}>
-        {/* Header */}
-        <div style={{ marginBottom:28 }}>
-          <div style={{ fontSize:30, fontWeight:800, letterSpacing:"-.02em", marginBottom:8 }}>Full Arch Planning</div>
-          <div style={{ fontSize:15, color:C.muted }}>
-            {activePatient ? `${activePatient.name} · ` : ""}Implant-supported full-arch prosthesis design workflow
-          </div>
-        </div>
-
-        {/* Prosthesis type selection */}
-        <div style={{ fontSize:12, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:12, fontWeight:700 }}>PROSTHESIS CLASSIFICATION</div>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))", gap:12, marginBottom:28 }}>
-          {Object.entries(PROSTHESIS_TYPES).map(([k, p]) => (
-            <button key={k} onClick={()=>setSelectedType(k)}
-              style={{ padding:"20px 22px", borderRadius:12, cursor:"pointer", textAlign:"left", fontFamily:C.sans,
-                background: selectedType === k ? p.color+"15" : C.surface,
-                border: `1.5px solid ${selectedType === k ? p.color : C.border}` }}>
-              <div style={{ fontSize:20, fontWeight:800, color: selectedType === k ? p.color : C.ink, marginBottom:6, textTransform:"uppercase", letterSpacing:1 }}>{k.toUpperCase()}</div>
-              <div style={{ fontSize:14, fontWeight:700, color:C.ink, marginBottom:8, lineHeight:1.4 }}>{p.name.split(' — ')[1]}</div>
-              <div style={{ fontSize:12, color:C.muted, lineHeight:1.5 }}>{p.description}</div>
-            </button>
-          ))}
-        </div>
-
-        {/* Selected type details */}
-        <div style={{ padding:"24px 28px", borderRadius:12, background:C.surface, border:`1.5px solid ${current.color}40`, marginBottom:28 }}>
-          <div style={{ fontSize:22, fontWeight:800, color:current.color, marginBottom:14 }}>{current.name}</div>
-
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))", gap:20, marginBottom:20 }}>
-            <div>
-              <div style={{ fontSize:11, fontFamily:C.font, color:current.color, letterSpacing:2, marginBottom:8, fontWeight:700 }}>INDICATIONS</div>
-              <ul style={{ margin:0, paddingLeft:20, fontSize:13, color:C.ink, lineHeight:1.7 }}>
-                {current.indications.map(i => <li key={i}>{i}</li>)}
-              </ul>
-            </div>
-            <div>
-              <div style={{ fontSize:11, fontFamily:C.font, color:C.amber, letterSpacing:2, marginBottom:8, fontWeight:700 }}>CHALLENGES</div>
-              <ul style={{ margin:0, paddingLeft:20, fontSize:13, color:C.ink, lineHeight:1.7 }}>
-                {current.challenges.map(c => <li key={c}>{c}</li>)}
-              </ul>
-            </div>
-          </div>
-
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, padding:"14px 18px", background:C.surface2, borderRadius:8 }}>
-            <div>
-              <div style={{ fontSize:10, color:C.muted, letterSpacing:1, fontFamily:C.font, marginBottom:4, fontWeight:700 }}>IMPLANTS</div>
-              <div style={{ fontSize:14, color:C.ink }}>{current.implants}</div>
-            </div>
-            <div>
-              <div style={{ fontSize:10, color:C.muted, letterSpacing:1, fontFamily:C.font, marginBottom:4, fontWeight:700 }}>MATERIAL</div>
-              <div style={{ fontSize:14, color:C.ink }}>{current.material}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Configuration */}
-        <div style={{ fontSize:12, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:12, fontWeight:700 }}>CONFIGURATION</div>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))", gap:14, marginBottom:28 }}>
-          <div style={{ padding:"16px 18px", borderRadius:10, background:C.surface, border:`1px solid ${C.border}` }}>
-            <div style={{ fontSize:11, color:C.muted, marginBottom:8, fontFamily:C.font, letterSpacing:1 }}>ARCH</div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6 }}>
-              {["upper","lower","both"].map(a => (
-                <button key={a} onClick={()=>setArch(a)}
-                  style={{ padding:"9px 4px", borderRadius:6, border:`1px solid ${arch===a?C.teal:C.border}`, background:arch===a?C.tealDim:"transparent", color:arch===a?C.teal:C.muted, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:C.sans, textTransform:"capitalize" }}>
-                  {a}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ padding:"16px 18px", borderRadius:10, background:C.surface, border:`1px solid ${C.border}` }}>
-            <div style={{ fontSize:11, color:C.muted, marginBottom:8, fontFamily:C.font, letterSpacing:1 }}>IMPLANTS PER ARCH</div>
-            <div style={{ display:"flex", gap:6 }}>
-              {[4,5,6,8].map(n => (
-                <button key={n} onClick={()=>setImplantCount(n)}
-                  style={{ flex:1, padding:"9px 4px", borderRadius:6, border:`1px solid ${implantCount===n?C.teal:C.border}`, background:implantCount===n?C.tealDim:"transparent", color:implantCount===n?C.teal:C.muted, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:C.sans }}>
-                  {n}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ padding:"16px 18px", borderRadius:10, background:C.surface, border:`1px solid ${C.border}` }}>
-            <div style={{ fontSize:11, color:C.muted, marginBottom:8, fontFamily:C.font, letterSpacing:1 }}>MATERIAL</div>
-            <select value={material} onChange={e=>setMaterial(e.target.value)}
-              style={{ width:"100%", padding:"8px 10px", borderRadius:6, border:`1px solid ${C.border}`, background:C.surface2, color:C.ink, fontSize:12, fontFamily:C.sans, outline:"none" }}>
-              <option value="monolithic-zirconia">Monolithic Zirconia</option>
-              <option value="layered-zirconia">Layered Zirconia</option>
-              <option value="titanium-acrylic">Ti Bar + Acrylic</option>
-              <option value="pekkton">PEKK Hybrid</option>
-              <option value="emax">Lithium Disilicate</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Workflow */}
-        <div style={{ fontSize:12, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:12, fontWeight:700 }}>CLINICAL WORKFLOW</div>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(250px, 1fr))", gap:12, marginBottom:28 }}>
-          {WORKFLOW_STEPS.map(s => (
-            <div key={s.num} style={{ padding:"18px 20px", borderRadius:10, background:C.surface, border:`1px solid ${C.border}` }}>
-              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
-                <div style={{ width:30, height:30, borderRadius:"50%", background:C.tealDim, border:`1.5px solid ${C.teal}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700, color:C.teal, fontFamily:C.font }}>{s.num}</div>
-                <div style={{ fontSize:14, fontWeight:700, color:C.ink }}>{s.title}</div>
-              </div>
-              <ul style={{ margin:0, paddingLeft:18, fontSize:12, color:C.muted, lineHeight:1.8 }}>
-                {s.items.map(i => <li key={i}>{i}</li>)}
-              </ul>
-            </div>
-          ))}
-        </div>
-
-        {/* Summary + CTA */}
-        <div style={{ padding:"24px 28px", borderRadius:12, background:`linear-gradient(135deg, ${C.teal}15, ${current.color}15)`, border:`1.5px solid ${C.tealBorder}`, marginBottom:20 }}>
-          <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, marginBottom:10, fontWeight:700 }}>YOUR PLAN</div>
-          <div style={{ fontSize:16, color:C.ink, lineHeight:1.7, marginBottom:14 }}>
-            <strong style={{ color:C.teal }}>{selectedType.toUpperCase()}</strong> prosthesis · <strong>{implantCount} implants</strong> per arch · <strong>{arch}</strong> arch{arch==="both"?"es":""} · <strong>{material.replace(/-/g,' ')}</strong>
-          </div>
-          <button onClick={()=>alert(`Full arch plan saved.\n\n${selectedType.toUpperCase()} · ${arch} arch · ${implantCount} implants · ${material}\n\nNext step: proceed to Implant Planning for fixture positioning.`)}
-            style={{ padding:"14px 28px", borderRadius:8, border:"none", background:C.teal, color:"white", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:C.sans }}>
-            Save treatment plan →
-          </button>
+    <div style={{ flex:1, overflow:"auto", background:C.bg, color:C.ink, fontFamily:C.sans }}>
+      {/* Header */}
+      <div style={{ padding:"20px 24px", borderBottom:`1px solid ${C.border}` }}>
+        <div style={{ fontSize:22, fontWeight:800, letterSpacing:"-.02em" }}>Full Arch Design</div>
+        <div style={{ fontSize:13, color:C.muted, marginTop:3 }}>
+          {activePatient ? `${activePatient.name}` : "Prosthetic planning & material selection"}
         </div>
       </div>
+
+      <div style={{ maxWidth:1200, margin:"0 auto", padding:"24px", display:"grid", gridTemplateColumns:"1fr 340px", gap:20 }}>
+        {/* LEFT: main planning */}
+        <div style={{ display:"flex", flexDirection:"column", gap:18 }}>
+          {/* Arch + implants + ridge */}
+          <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:20 }}>
+            <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, fontWeight:700, marginBottom:14 }}>CASE PARAMETERS</div>
+
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))", gap:16 }}>
+              <Group label="ARCH">
+                {["upper","lower","both"].map(a => (
+                  <Pill key={a} active={arch===a} onClick={()=>setArch(a)}>{a.toUpperCase()}</Pill>
+                ))}
+              </Group>
+              <Group label="IMPLANT COUNT">
+                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <input type="range" min={2} max={8} value={implants} onChange={e=>setImpl(parseInt(e.target.value))}
+                    style={{ flex:1, accentColor:C.teal }}/>
+                  <span style={{ fontSize:18, fontFamily:C.font, color:C.teal, fontWeight:700, minWidth:30 }}>{implants}</span>
+                </div>
+              </Group>
+              <Group label="RIDGE CONDITION">
+                {[["ideal","Ideal"],["mild","Mild loss"],["moderate","Moderate"],["atrophic","Atrophic"]].map(([v,l]) => (
+                  <Pill key={v} active={ridge===v} onClick={()=>setRidge(v)}>{l}</Pill>
+                ))}
+              </Group>
+              <Group label="SMILE LINE">
+                {[["low","Low"],["medium","Medium"],["high","High"]].map(([v,l]) => (
+                  <Pill key={v} active={smileline===v} onClick={()=>setSL(v)}>{l}</Pill>
+                ))}
+              </Group>
+              <Group label="OPPOSING">
+                {[["natural","Natural dent."],["full-arch","Full arch"],["rpd","RPD/CD"]].map(([v,l]) => (
+                  <Pill key={v} active={opposing===v} onClick={()=>setOpp(v)}>{l}</Pill>
+                ))}
+              </Group>
+            </div>
+          </div>
+
+          {/* Prosthesis type selection */}
+          <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:20 }}>
+            <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, fontWeight:700, marginBottom:14 }}>PROSTHESIS TYPE (Misch classification)</div>
+            <div style={{ display:"grid", gap:10 }}>
+              {TYPES.map(t => {
+                const active = t.id === type;
+                return (
+                  <button key={t.id} onClick={()=>setType(t.id)}
+                    style={{ textAlign:"left", padding:"14px 16px", borderRadius:9, background:active?C.tealDim:C.surface2, border:`1.5px solid ${active?C.tealBorder:C.border}`, cursor:"pointer", fontFamily:C.sans, color:C.ink, transition:"all .15s" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
+                      <div style={{ fontSize:14, fontWeight:700, color:active?C.teal:C.ink }}>{t.label}</div>
+                      <span style={{ fontSize:11, color:C.amber, fontFamily:C.font, fontWeight:700 }}>{t.cost}</span>
+                    </div>
+                    <div style={{ fontSize:12, color:C.muted, lineHeight:1.5 }}>{t.when}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Selected type detail */}
+          {selectedType && (
+            <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:20 }}>
+              <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, fontWeight:700, marginBottom:14 }}>{selectedType.id} DETAIL</div>
+              <div style={{ fontSize:13, color:C.ink, marginBottom:12, lineHeight:1.6 }}>{selectedType.fit}</div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginTop:10 }}>
+                <div>
+                  <div style={{ fontSize:10, color:C.green, fontFamily:C.font, letterSpacing:1.5, fontWeight:700, marginBottom:6 }}>✓ PROS</div>
+                  <ul style={{ margin:0, paddingLeft:16, fontSize:12, color:C.ink, lineHeight:1.7 }}>
+                    {selectedType.pros.map((p,i) => <li key={i}>{p}</li>)}
+                  </ul>
+                </div>
+                <div>
+                  <div style={{ fontSize:10, color:C.amber, fontFamily:C.font, letterSpacing:1.5, fontWeight:700, marginBottom:6 }}>⚠ CONS</div>
+                  <ul style={{ margin:0, paddingLeft:16, fontSize:12, color:C.ink, lineHeight:1.7 }}>
+                    {selectedType.cons.map((p,i) => <li key={i}>{p}</li>)}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Workflow + material */}
+          <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:20 }}>
+            <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, fontWeight:700, marginBottom:14 }}>WORKFLOW & MATERIAL</div>
+
+            <div style={{ marginBottom:16 }}>
+              <div style={{ fontSize:10, color:C.muted, fontFamily:C.font, letterSpacing:1.5, marginBottom:6 }}>WORKFLOW</div>
+              <div style={{ display:"grid", gap:6 }}>
+                {Object.entries(WORKFLOWS).map(([k, v]) => (
+                  <button key={k} onClick={()=>setWF(k)}
+                    style={{ textAlign:"left", padding:"12px 14px", borderRadius:7, background:workflow===k?C.purpleDim:C.surface2, border:`1.5px solid ${workflow===k?C.purple+"60":C.borderSoft}`, cursor:"pointer", fontFamily:C.sans }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                      <span style={{ fontSize:13, fontWeight:700, color:workflow===k?C.purple:C.ink }}>{v.label}</span>
+                      <span style={{ fontSize:10, color:C.muted, fontFamily:C.font }}>{v.visits} visits</span>
+                    </div>
+                    <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>Timeline: {v.time}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontSize:10, color:C.muted, fontFamily:C.font, letterSpacing:1.5, marginBottom:6 }}>FINAL MATERIAL</div>
+              <select value={material} onChange={e=>setMat(e.target.value)}
+                style={{ width:"100%", padding:"12px 14px", borderRadius:7, border:`1px solid ${C.border}`, background:C.surface2, color:C.ink, fontSize:14, fontFamily:C.sans, outline:"none" }}>
+                {[
+                  "Zirconia monolithic",
+                  "Layered zirconia (pink + white)",
+                  "Titanium bar + zirconia",
+                  "Titanium bar + PMMA (provisional)",
+                  "Composite on Ti bar (PFX)",
+                  "Cast metal + acrylic hybrid",
+                ].map(x => <option key={x}>{x}</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT: recommendations + summary */}
+        <div style={{ display:"flex", flexDirection:"column", gap:18 }}>
+          <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:18, position:"sticky", top:20 }}>
+            <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, fontWeight:700, marginBottom:14 }}>CASE SUMMARY</div>
+            <SumRow k="Arch" v={arch.toUpperCase()}/>
+            <SumRow k="Implants" v={implants}/>
+            <SumRow k="Type" v={type}/>
+            <SumRow k="Workflow" v={WORKFLOWS[workflow].label}/>
+            <SumRow k="Material" v={material}/>
+            <SumRow k="Ridge" v={ridge}/>
+            <SumRow k="Smile line" v={smileline}/>
+
+            <div style={{ marginTop:16, paddingTop:14, borderTop:`1px solid ${C.borderSoft}`, fontSize:11, color:C.muted, lineHeight:1.6 }}>
+              <div><strong style={{ color:C.ink }}>Est. timeline:</strong> {WORKFLOWS[workflow].time}</div>
+              <div><strong style={{ color:C.ink }}>Visits:</strong> {WORKFLOWS[workflow].visits}</div>
+            </div>
+
+            <div style={{ marginTop:16, display:"flex", flexDirection:"column", gap:8 }}>
+              <button onClick={()=>navigate && navigate("implant-plan")} style={{ padding:"12px", borderRadius:8, background:C.surface2, color:C.ink, border:`1px solid ${C.border}`, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:C.sans }}>→ Plan Individual Implants</button>
+              <button onClick={()=>navigate && navigate("export")} style={{ padding:"12px", borderRadius:8, background:C.teal, color:"white", border:"none", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:C.sans }}>→ Package Case for Lab</button>
+            </div>
+          </div>
+
+          {recommendations.length > 0 && (
+            <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:18 }}>
+              <div style={{ fontSize:11, fontFamily:C.font, color:C.amber, letterSpacing:2, fontWeight:700, marginBottom:12 }}>⚠ RECOMMENDATIONS ({recommendations.length})</div>
+              {recommendations.map((r, i) => (
+                <div key={i} style={{ padding:"10px 12px", borderRadius:7, background:r.level==='warning'?C.amberDim:C.tealDim, border:`1px solid ${r.level==='warning'?C.amber+'40':C.tealBorder}`, fontSize:12, color:C.ink, lineHeight:1.55, marginBottom:8 }}>
+                  {r.text}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Group({ label, children }) {
+  return (
+    <div>
+      <div style={{ fontSize:10, color:C.muted, fontFamily:C.font, letterSpacing:1.5, marginBottom:8, fontWeight:700 }}>{label}</div>
+      <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>{children}</div>
+    </div>
+  );
+}
+
+function Pill({ active, onClick, children }) {
+  return (
+    <button onClick={onClick}
+      style={{ padding:"8px 14px", borderRadius:20, background:active?C.tealDim:C.surface2, border:`1.5px solid ${active?C.tealBorder:C.border}`, color:active?C.teal:C.muted, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:C.sans, whiteSpace:"nowrap" }}>
+      {children}
+    </button>
+  );
+}
+
+function SumRow({ k, v }) {
+  return (
+    <div style={{ display:"flex", justifyContent:"space-between", padding:"7px 0", borderBottom:`1px solid ${C.borderSoft}`, fontSize:12 }}>
+      <span style={{ color:C.muted }}>{k}</span>
+      <span style={{ color:C.ink, fontWeight:600, textAlign:"right" }}>{v}</span>
     </div>
   );
 }
