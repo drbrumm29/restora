@@ -290,20 +290,31 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
       obj.material.opacity = m.opacity ?? 1;
       obj.material.transparent = (m.opacity ?? 1) < 1;
 
-      // For library teeth (crown): apply transform
+      // For library teeth (crown): apply placement + transform
       if (m.slot === 'crown' && rotateRef.current.centerOffset) {
         const off = rotateRef.current.centerOffset;
         const t = m.transform || { tx:0, ty:0, tz:0, rx:0, ry:0, rz:0, scale:1 };
-        // Position: scene center + user translation
-        obj.position.set(off.x + t.tx, off.y + 15 + t.ty, off.z + t.tz);
-        // Rotation: user-specified degrees → radians
+        // Base position: if placement (from applyDesignLibrary) use labelX/Y/Z in world space
+        // else fallback to scene center + 15mm above
+        let baseX, baseY, baseZ;
+        if (m.placement) {
+          baseX = m.placement.labelX + off.x;
+          baseY = m.placement.labelY + off.y;
+          baseZ = m.placement.labelZ + off.z;
+        } else {
+          baseX = off.x; baseY = off.y + 15; baseZ = off.z;
+        }
+        obj.position.set(baseX + t.tx, baseY + t.ty, baseZ + t.tz);
+        // Rotation
         obj.rotation.set(
           (t.rx || 0) * Math.PI / 180,
           (t.ry || 0) * Math.PI / 180,
           (t.rz || 0) * Math.PI / 180,
         );
-        // Scale
-        obj.scale.setScalar(t.scale || 1);
+        // Scale — negative X for mirrored (patient-left) teeth
+        const s = t.scale || 1;
+        const xSign = m.placement?.mirrored ? -1 : 1;
+        obj.scale.set(s * xSign, s, s);
         obj.userData.isFresh = false;
       }
 
@@ -503,15 +514,24 @@ export default function RestorationCAD({ navigate, activePatient }) {
 
   // Pick up any queued tooth from ToothLibraryBrowser's "Use This Tooth" button
   useEffect(() => {
-    const queued = sessionStorage.getItem('restora-queued-tooth');
-    if (!queued) return;
-    try {
-      const { libId, fileName } = JSON.parse(queued);
-      sessionStorage.removeItem('restora-queued-tooth');
-      // Wait for patient meshes to finish loading first
-      const tryAdd = setTimeout(() => addLibraryTooth(libId, fileName), 800);
-      return () => clearTimeout(tryAdd);
-    } catch {}
+    const queuedTooth = sessionStorage.getItem('restora-queued-tooth');
+    const queuedLibrary = sessionStorage.getItem('restora-queued-library');
+    if (!queuedTooth && !queuedLibrary) return;
+
+    // Wait for patient meshes + labels to be loaded
+    const timer = setTimeout(() => {
+      if (queuedLibrary) {
+        sessionStorage.removeItem('restora-queued-library');
+        applyDesignLibrary(queuedLibrary);
+      } else if (queuedTooth) {
+        try {
+          const { libId, fileName } = JSON.parse(queuedTooth);
+          sessionStorage.removeItem('restora-queued-tooth');
+          addLibraryTooth(libId, fileName);
+        } catch {}
+      }
+    }, 1000);
+    return () => clearTimeout(timer);
   }, [patient?.id]);
 
   // Load patient files into viewer
@@ -577,6 +597,141 @@ export default function RestorationCAD({ navigate, activePatient }) {
       }]);
       setActive(id);
       setShowLib(false);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ── Apply Design Library — ONE CLICK loads matched teeth at all labeled positions
+  // Uses the user's tooth number labels to determine which teeth to place and where.
+  // Each library tooth auto-positioned at its label coord, sized to adjacent spacing,
+  // oriented outward from arch centroid.
+  async function applyDesignLibrary(libId) {
+    // Must have labels first
+    if (toothLabels.length < 2) {
+      alert("Label the target teeth first, then apply the design library. Use 🏷 Label Teeth to place at least 2 labels (e.g. #4 and #13), then ✨ Auto-Number to fill the rest.");
+      return;
+    }
+
+    // Map Universal tooth numbers → library file names
+    // Library convention (dannydesigner, g01/g02): files 1-8 follow:
+    //   1 = central incisor, 2 = lateral incisor, 3 = canine,
+    //   4 = 1st premolar, 5 = 2nd premolar, 6 = 1st molar, 7 = 2nd molar, 8 = 3rd molar
+    function fileForTooth(num) {
+      // Upper right (#1-8) and upper left (#9-16) mirror each other
+      // #8 and #9 = centrals, #7 and #10 = laterals, #6 and #11 = canines, etc.
+      const mirrored = num > 8 ? num : (17 - num);
+      // Mirrored maps 1→16, 2→15... 8→9, 9→8 so upper right #8 maps to #9 position
+      // Simpler: distance from midline determines tooth type
+      const distFromMidline = num >= 9 ? num - 8 : 9 - num;
+      const map = {
+        1: "1.stl",  // central incisor
+        2: "2.stl",  // lateral incisor
+        3: "3.stl",  // canine
+        4: "4.stl",  // 1st premolar
+        5: "5.stl",  // 2nd premolar
+        6: "6.stl",  // 1st molar
+        7: "7.stl",  // 2nd molar
+        8: "8.stl",  // 3rd molar
+      };
+      return map[distFromMidline] || "1.stl";
+    }
+
+    // Determine arch centroid from labels — for outward orientation
+    const labels = [...toothLabels].sort((a,b) => a.num - b.num);
+    const centroid = labels.reduce((acc, l) => ({
+      x: acc.x + l.x / labels.length,
+      y: acc.y + l.y / labels.length,
+      z: acc.z + l.z / labels.length,
+    }), { x:0, y:0, z:0 });
+
+    // Compute typical spacing between adjacent labels for scale estimation
+    let totalSpacing = 0, pairCount = 0;
+    for (let i = 0; i < labels.length - 1; i++) {
+      if (labels[i+1].num === labels[i].num + 1) {
+        const dx = labels[i+1].x - labels[i].x;
+        const dy = labels[i+1].y - labels[i].y;
+        const dz = labels[i+1].z - labels[i].z;
+        totalSpacing += Math.hypot(dx, dy, dz);
+        pairCount++;
+      }
+    }
+    const avgSpacing = pairCount > 0 ? totalSpacing / pairCount : 8;  // default 8mm if can't compute
+    // Typical tooth mesiodistal width is ~8mm (central) down to ~6mm (lateral/premolar)
+    // Library teeth are already ~6-10mm wide, so the scale factor is ~1.0 in most cases
+    // Fine-tune by user afterwards
+
+    // Remove any existing library teeth (crown slot) — user wants a fresh set
+    const existingCrownIds = meshes.filter(m => m.slot === 'crown').map(m => m.id);
+
+    setLoading(true);
+    const newTeeth = [];
+    try {
+      // Load each tooth's STL in parallel
+      const results = await Promise.all(labels.map(async (label) => {
+        const fileName = fileForTooth(label.num);
+        try {
+          const resp = await fetch(`/libraries/${libId}/${fileName}`);
+          if (!resp.ok) return null;
+          const buf = await resp.arrayBuffer();
+          const { positions, normals, triCount } = parseSTL(buf);
+          return { label, fileName, positions, normals, triCount };
+        } catch { return null; }
+      }));
+
+      const now = Date.now();
+      for (const r of results) {
+        if (!r) continue;
+        const { label, fileName, positions, normals, triCount } = r;
+
+        // Compute outward direction from arch centroid to this tooth position
+        // This tells us which way the tooth should "face" (facial surface normal)
+        const outX = label.x - centroid.x;
+        const outZ = label.z - centroid.z;
+        const outLen = Math.hypot(outX, outZ);
+        // Convert to a Y-axis rotation angle (yaw) — rotates tooth around vertical axis
+        // to face outward. atan2 returns angle in radians, convert to degrees.
+        const yawDeg = outLen > 0.1 ? (Math.atan2(outX, outZ) * 180 / Math.PI) : 0;
+
+        // Mirror flag for left-side teeth (patient left = #9-#16)
+        // Right-side teeth (#1-#8) use original library geometry
+        // Left-side should mirror on X axis so cusp anatomy points correct way
+        const isMirrored = label.num >= 9;
+
+        newTeeth.push({
+          id: `lib-${libId}-${label.num}-${now}`,
+          name: fileName,
+          slot: 'crown',
+          toothNum: label.num,
+          label: `#${label.num} · ${libId}/${fileName.replace('.stl','')}`,
+          positions, normals, triCount,
+          color: SHADE_HEX[shade] ?? SHADE_HEX.A1,
+          highlightColor: 0x0abab5,
+          visible: true,
+          opacity: 1,
+          // Placement info — used by viewer to position mesh at label
+          placement: {
+            labelX: label.x,
+            labelY: label.y,
+            labelZ: label.z,
+            mirrored: isMirrored,
+          },
+          // Transform offsets — starts at identity, user fine-tunes
+          transform: {
+            tx: 0, ty: 0, tz: 0,
+            rx: 0,
+            ry: yawDeg,  // preset to face outward from arch
+            rz: 0,
+            scale: 1,
+          },
+        });
+      }
+
+      // Replace existing crown meshes with the new set
+      setMeshes(ms => [
+        ...ms.filter(m => !existingCrownIds.includes(m.id)),
+        ...newTeeth,
+      ]);
     } finally {
       setLoading(false);
     }
@@ -864,14 +1019,28 @@ export default function RestorationCAD({ navigate, activePatient }) {
 
           {/* Library picker (overlay) */}
           {showLib && (
-            <div style={{ position:"absolute", top:16, right:16, width:320, maxHeight:"calc(100% - 32px)", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, boxShadow:"0 8px 32px rgba(0,0,0,.4)", padding:18, overflow:"auto", zIndex:2 }}>
+            <div style={{ position:"absolute", top:16, right:16, width:340, maxHeight:"calc(100% - 32px)", background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, boxShadow:"0 8px 32px rgba(0,0,0,.4)", padding:18, overflow:"auto", zIndex:2 }}>
               <div style={{ display:"flex", justifyContent:"space-between", marginBottom:14 }}>
                 <span style={{ fontSize:15, fontFamily:C.font, color:C.purple, letterSpacing:2, fontWeight:700 }}>TOOTH LIBRARY</span>
                 <button onClick={()=>setShowLib(false)} style={{ background:"none", border:"none", color:C.ink, cursor:"pointer", fontSize:16 }}>✕</button>
               </div>
+              {toothLabels.length >= 2 && (
+                <div style={{ padding:"10px 12px", marginBottom:14, borderRadius:8, background:C.tealDim, border:`1px solid ${C.tealBorder}`, fontSize:12, color:C.ink, lineHeight:1.5 }}>
+                  ✨ <strong>Apply Whole Library</strong> — places matched teeth at all {toothLabels.length} labeled positions in one click.
+                </div>
+              )}
               {libs.map(lib => (
-                <div key={lib.id} style={{ marginBottom:12 }}>
-                  <div style={{ fontSize:16, fontWeight:700, color:C.ink, marginBottom:6 }}>{lib.label}</div>
+                <div key={lib.id} style={{ marginBottom:14, paddingBottom:12, borderBottom:`1px solid ${C.borderSoft}` }}>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+                    <div style={{ fontSize:16, fontWeight:700, color:C.ink }}>{lib.label}</div>
+                    {toothLabels.length >= 2 && (lib.teeth?.length >= 5 || lib.files?.length >= 5) && (
+                      <button
+                        onClick={() => { applyDesignLibrary(lib.id); setShowLib(false); }}
+                        style={{ padding:"6px 10px", borderRadius:6, background:C.teal, color:"white", border:"none", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:C.sans, whiteSpace:"nowrap" }}
+                        title="Apply all matched teeth at labeled positions"
+                      >✨ Apply All →</button>
+                    )}
+                  </div>
                   <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
                     {(lib.teeth || []).map(n => (
                       <button key={n} onClick={()=>addLibraryTooth(lib.id, `${n}.stl`)}

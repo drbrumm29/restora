@@ -441,6 +441,13 @@ export default function ToothLibraryBrowser({ navigate, activePatient }) {
     if (navigate) navigate('restoration-cad');
   }
 
+  function applyWholeLibrary() {
+    // Stash which library to apply — Restoration CAD picks it up and places
+    // all teeth matching patient's labels in one go
+    sessionStorage.setItem('restora-queued-library', activePack);
+    if (navigate) navigate('restoration-cad');
+  }
+
   // Sort packs: favorites first
   const sortedPacks = useMemo(() => {
     const favs = LIBRARY_PACKS.filter(p => favorites.includes(p.id));
@@ -552,7 +559,33 @@ export default function ToothLibraryBrowser({ navigate, activePatient }) {
                 ))}
               </div>
             </div>
+            {activePatient && pack.files.length >= 5 && (
+              <button onClick={applyWholeLibrary}
+                style={{
+                  padding: "14px 20px",
+                  borderRadius: 10,
+                  background: `linear-gradient(135deg, ${pack.color}, ${C.teal})`,
+                  color: "white",
+                  border: "none",
+                  fontSize: 15,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  fontFamily: C.sans,
+                  boxShadow: `0 6px 24px ${pack.color}50`,
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                }}
+                title={`Apply ${pack.name} to all target teeth in ${activePatient.name}'s case`}
+              >
+                ✨ Apply Whole Library →
+              </button>
+            )}
           </div>
+          {activePatient && pack.files.length >= 5 && (
+            <div style={{ padding: "10px 14px", marginBottom: 18, borderRadius: 7, background: C.tealDim, border: `1px solid ${C.tealBorder}`, fontSize: 13, color: C.ink, lineHeight: 1.5 }}>
+              ℹ️ <strong>Apply Whole Library</strong> places matched teeth at ALL your labeled target positions in one click. Label the target teeth in Restoration CAD first (#4-#13 for {activePatient.name}'s case), then return here and click Apply.
+            </div>
+          )}
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 14 }}>
             {pack.files.map(f => {
