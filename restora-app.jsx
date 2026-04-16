@@ -7,9 +7,9 @@ import { useState, useReducer, useCallback, useEffect, useRef } from "react";
 
 // ── Design tokens — Tiffany Blue light theme ───────────────────────
 const C = {
-  bg:"#f0fbfa", surface:"#ffffff", surface2:"#e8f8f7", surface3:"#d4f0ee",
-  border:"#b2e0dd", borderSoft:"#ccecea",
-  ink:"#0d2b2a", muted:"#4a7674", light:"#7aaeac",
+  bg:"#0d1b2e", surface:"#132338", surface2:"#1a2f48", surface3:"#213858",
+  border:"#2a4060", borderSoft:"#1f3352",
+  ink:"#e8edf4", muted:"#7a9bb5", light:"#3d5a78",
   teal:"#0abab5", tealDim:"rgba(10,186,181,.1)", tealBorder:"rgba(10,186,181,.3)",
   gold:"#b8860b", goldDim:"rgba(184,134,11,.08)",
   amber:"#d97706", amberDim:"rgba(217,119,6,.08)",
@@ -18,7 +18,7 @@ const C = {
   red:"#dc2626", green:"#059669", warn:"#d97706",
   font:"'DM Mono','JetBrains Mono',monospace",
   sans:"system-ui,-apple-system,sans-serif",
-  shadow:"0 1px 3px rgba(10,186,181,.08),0 4px 16px rgba(10,186,181,.12)",
+  shadow:"0 1px 3px rgba(0,0,0,.4),0 4px 16px rgba(0,0,0,.3)",
 };
 
 // ── Navigation screens ─────────────────────────────────────────────
@@ -92,16 +92,16 @@ const CASE_TYPES = {
   "implant-full-arch":   { label:"Full Arch Implant",   icon:"⬟", sub:"Bar · Zirconia · FP3",       color:C.teal, dim:C.tealDim, systems:["Lab CAD"] },
 };
 const ESTHETIC_P = [
-  { id:"smile_arc",       label:"Smile arc",                 type:"select", aacd:true,  tip:"AACD: consonant with lower lip — never flat", options:["Consonant (ideal)","Slightly flat","Reverse — correct","Maintain existing"], def:"Consonant (ideal)" },
-  { id:"wl_ratio",        label:"Central W:L ratio",         type:"range",  aacd:true,  tip:"AACD: 75–80%", min:65, max:90, step:1, unit:"%", def:78 },
-  { id:"incisal_display", label:"Incisal display at repose", type:"range",  aacd:true,  tip:"AACD: 1–3mm typical", min:0, max:5, step:.5, unit:"mm", def:2 },
-  { id:"midline",         label:"Midline treatment",         type:"select", aacd:true,  tip:"AACD: >1mm deviation perceptible", options:["Align to facial midline","Maintain existing","Shift right","Shift left","Accept <1mm deviation"], def:"Align to facial midline" },
-  { id:"gingival_levels", label:"Gingival levels",           type:"select", aacd:true,  tip:"Centrals=canines, laterals 0.5mm coronal", options:["Centrals = canines · laterals 0.5mm coronal (AACD)","All level","Custom"], def:"Centrals = canines · laterals 0.5mm coronal (AACD)" },
-  { id:"tooth_form",      label:"Tooth form",                type:"select", aacd:false, options:["Square-tapering","Ovoid","Triangular","Square","Match existing"], def:"Square-tapering" },
-  { id:"embrasure",       label:"Embrasure form",            type:"select", aacd:true,  tip:"AACD: progressive, open anteriorly", options:["Open (youthful)","Closed (mature)","Progressive"], def:"Progressive" },
-  { id:"surface_texture", label:"Surface texture",           type:"select", aacd:false, options:["Smooth / high gloss","Subtle perikymata","Moderate texture","Pronounced / natural"], def:"Subtle perikymata" },
-  { id:"shade",           label:"Target shade",              type:"select", aacd:false, options:["BL1","BL2","BL3","BL4","A1","A2","A3","B1","Match existing"], def:"A1" },
-  { id:"characterisation",label:"Characterisation",         type:"multi",  aacd:false, options:["Mamelons","Incisal halo","Cervical chroma","Surface crazing","None"], def:["Incisal halo","Cervical chroma"] },
+  { id:"smile_arc",       label:"Smile arc",                 type:"select", aep:true,  tip:"AEP: consonant with lower lip — never flat", options:["Consonant (ideal)","Slightly flat","Reverse — correct","Maintain existing"], def:"Consonant (ideal)" },
+  { id:"wl_ratio",        label:"Central W:L ratio",         type:"range",  aep:true,  tip:"AEP: 75–80%", min:65, max:90, step:1, unit:"%", def:78 },
+  { id:"incisal_display", label:"Incisal display at repose", type:"range",  aep:true,  tip:"AEP: 1–3mm typical", min:0, max:5, step:.5, unit:"mm", def:2 },
+  { id:"midline",         label:"Midline treatment",         type:"select", aep:true,  tip:"AEP: >1mm deviation perceptible", options:["Align to facial midline","Maintain existing","Shift right","Shift left","Accept <1mm deviation"], def:"Align to facial midline" },
+  { id:"gingival_levels", label:"Gingival levels",           type:"select", aep:true,  tip:"Centrals=canines, laterals 0.5mm coronal", options:["Centrals = canines · laterals 0.5mm coronal (AEP)","All level","Custom"], def:"Centrals = canines · laterals 0.5mm coronal (AEP)" },
+  { id:"tooth_form",      label:"Tooth form",                type:"select", aep:false, options:["Square-tapering","Ovoid","Triangular","Square","Match existing"], def:"Square-tapering" },
+  { id:"embrasure",       label:"Embrasure form",            type:"select", aep:true,  tip:"AEP: progressive, open anteriorly", options:["Open (youthful)","Closed (mature)","Progressive"], def:"Progressive" },
+  { id:"surface_texture", label:"Surface texture",           type:"select", aep:false, options:["Smooth / high gloss","Subtle perikymata","Moderate texture","Pronounced / natural"], def:"Subtle perikymata" },
+  { id:"shade",           label:"Target shade",              type:"select", aep:false, options:["BL1","BL2","BL3","BL4","A1","A2","A3","B1","Match existing"], def:"A1" },
+  { id:"characterisation",label:"Characterisation",         type:"multi",  aep:false, options:["Mamelons","Incisal halo","Cervical chroma","Surface crazing","None"], def:["Incisal halo","Cervical chroma"] },
 ];
 const PREP_P = [
   { id:"prep_type",       label:"Preparation type",  type:"select", tip:"Minimal prep protocol priority", options:["No-prep","Minimal <0.3mm","Veneer 0.3–0.5mm","Crown full coverage","Onlay","Inlay"], def:"Minimal <0.3mm" },
@@ -201,10 +201,10 @@ function AIDesignGuide({ navigate }) {
 
 PARAMETERS:\n${lines}
 
-AACD BASELINES: Central W:L 75-80%. Smile arc consonant with lower lip. Incisal display 1-3mm repose. Midline >1mm = flag. Centrals=canines gingival level, laterals 0.5mm coronal. Emergence: concave/flat subgingival. Minimal prep: prefer <0.5mm facial reduction. Centric contacts on flat planes. Posterior disclusion in all excursives.
+AEP BASELINES: Central W:L 75-80%. Smile arc consonant with lower lip. Incisal display 1-3mm repose. Midline >1mm = flag. Centrals=canines gingival level, laterals 0.5mm coronal. Emergence: concave/flat subgingival. Minimal prep: prefer <0.5mm facial reduction. Centric contacts on flat planes. Posterior disclusion in all excursives.
 
 Respond ONLY valid JSON no preamble:
-{"summary":"2-sentence clinical summary","esthetic_decisions":[{"parameter":"name","value":"val","rationale":"1 sentence","aacd":true}],"restorative_decisions":[{"parameter":"name","value":"val","rationale":"1 sentence"}],"protocol_flags":[{"level":"pass|warning|critical","message":"text"}],"suite_routing":{"smile_design":{"role":"desc","tasks":["t1","t2"],"active":true},"mill_connect":{"role":"desc","tasks":["t1","t2"],"active":true},"lab_cad":{"role":"desc","tasks":["t1"],"active":false}},"lab_rx":"3-sentence prescription"}`}] })
+{"summary":"2-sentence clinical summary","esthetic_decisions":[{"parameter":"name","value":"val","rationale":"1 sentence","aep":true}],"restorative_decisions":[{"parameter":"name","value":"val","rationale":"1 sentence"}],"protocol_flags":[{"level":"pass|warning|critical","message":"text"}],"suite_routing":{"smile_design":{"role":"desc","tasks":["t1","t2"],"active":true},"mill_connect":{"role":"desc","tasks":["t1","t2"],"active":true},"lab_cad":{"role":"desc","tasks":["t1"],"active":false}},"lab_rx":"3-sentence prescription"}`}] })
       });
       const data = await res.json();
       const raw = data.content?.[0]?.text || "{}";
@@ -251,7 +251,7 @@ Respond ONLY valid JSON no preamble:
           <div>
             <div style={{ textAlign:"center", marginBottom:36 }}>
               <div style={{ fontSize:22,fontWeight:700,letterSpacing:"-.03em",marginBottom:8 }}>What type of case are you designing?</div>
-              <div style={{ fontSize:13,color:C.muted }}>Select a case type to load the AACD + technique manual parameter set.</div>
+              <div style={{ fontSize:13,color:C.muted }}>Select a case type to load the Restora AEP + technique manual parameter set.</div>
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
               {Object.entries(CASE_TYPES).map(([k,def])=>(
@@ -282,7 +282,7 @@ Respond ONLY valid JSON no preamble:
               <span style={{ fontSize:18,color:ct.color }}>{ct.icon}</span>
               <div>
                 <div style={{ fontSize:15,fontWeight:700 }}>{ct.label}</div>
-                <div style={{ fontSize:11,color:C.muted }}>AACD + technique manual parameters</div>
+                <div style={{ fontSize:11,color:C.muted }}>AEP · Advanced Esthetic Protocol parameters</div>
               </div>
             </div>
             {/* Tabs */}
@@ -301,7 +301,7 @@ Respond ONLY valid JSON no preamble:
               <div key={p.id} style={{ padding:"14px 0",borderBottom:i<tabPs.length-1?`1px solid ${C.borderSoft}`:"none" }}>
                 <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap" }}>
                   <span style={{ fontSize:12,fontWeight:600,color:C.ink }}>{p.label}</span>
-                  {p.aacd&&<Tag label="AACD" color={C.teal} dim={C.tealDim} />}
+                  {p.aep&&<Tag label="AEP" color={C.teal} dim={C.tealDim} />}
                   {p.tip&&<span style={{ fontSize:10,color:C.light,fontStyle:"italic" }}>{p.tip}</span>}
                 </div>
                 <ParamCtrl p={p} val={params[p.id]??p.def} set={v=>setP(p.id,v)} />
@@ -319,7 +319,7 @@ Respond ONLY valid JSON no preamble:
           <div style={{ textAlign:"center",marginTop:80 }}>
             <div style={{ fontSize:28,marginBottom:16 }}>◈</div>
             <div style={{ fontSize:14,fontWeight:600,marginBottom:6 }}>Generating design brief…</div>
-            <div style={{ fontSize:12,color:C.muted,lineHeight:1.7 }}>Applying AACD guidelines · Technique manual protocol · Routing to design suite</div>
+            <div style={{ fontSize:12,color:C.muted,lineHeight:1.7 }}>Applying AEP guidelines · Technique manual protocol · Routing to design suite</div>
             <div style={{ marginTop:28,height:2,background:C.surface2,borderRadius:1,overflow:"hidden" }}>
               <div style={{ height:"100%",background:C.teal,borderRadius:1,width:"65%",animation:"sl 1.3s ease-in-out infinite alternate" }} />
             </div>
@@ -333,7 +333,7 @@ Respond ONLY valid JSON no preamble:
             <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:22 }}>
               <div>
                 <div style={{ fontSize:16,fontWeight:700,marginBottom:4 }}>AI Design Brief</div>
-                <div style={{ fontSize:11,color:C.muted }}>{ct.label} · AACD guidelines + technique manual</div>
+                <div style={{ fontSize:11,color:C.muted }}>{ct.label} · AEP guidelines + technique manual</div>
               </div>
               <div style={{ display:"flex",gap:8 }}>
                 <Btn onClick={()=>setStep("params")} variant="ghost" style={{ padding:"8px 14px",fontSize:11 }}>← Edit params</Btn>
@@ -351,7 +351,7 @@ Respond ONLY valid JSON no preamble:
                   <div key={i} style={{ padding:"10px 14px",borderBottom:i<brief.esthetic_decisions.length-1?`1px solid ${C.borderSoft}`:"none" }}>
                     <div style={{ display:"flex",gap:6,alignItems:"center",marginBottom:3 }}>
                       <span style={{ fontSize:11,fontWeight:600,color:C.ink }}>{d.parameter}</span>
-                      {d.aacd&&<Tag label="AACD" color={C.teal} dim={C.tealDim} />}
+                      {d.aep&&<Tag label="AEP" color={C.teal} dim={C.tealDim} />}
                     </div>
                     <div style={{ fontSize:11,color:C.gold,marginBottom:3,fontFamily:C.font }}>{d.value}</div>
                     <div style={{ fontSize:10,color:C.muted,lineHeight:1.5 }}>{d.rationale}</div>
@@ -1201,39 +1201,39 @@ function ExportScreen() {
 // ── Full 32-tooth database ────────────────────────────────────────
 const TEETH_DB = [
   // MAXILLARY
-  {n:1, name:"Max 3rd Molar",      short:"Wisdom",           arch:"max", region:"molar",    L:"6-7mm",  W:"8-10mm", root:"11-14mm", roots:3, cusp:4, aacd:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Variable",      emergence:"Standard",              note:"Often aberrant morphology. Verify root anatomy."},
-  {n:2, name:"Max 2nd Molar",      short:"2nd Molar",        arch:"max", region:"molar",    L:"6-8mm",  W:"9-11mm", root:"18-22mm", roots:3, cusp:4, aacd:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Thick-flat",    emergence:"Furcation barrel",      note:"3 roots — MB, DB, Palatal. Furcation shaping critical."},
-  {n:3, name:"Max 1st Molar",      short:"1st Molar",        arch:"max", region:"molar",    L:"6-8mm",  W:"10-11mm",root:"20-24mm", roots:3, cusp:4, aacd:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Thick-flat",    emergence:"Furcation barrel",      note:"Largest surface area tooth. High occlusal load."},
-  {n:4, name:"Max 2nd Premolar",   short:"2nd Premolar",     arch:"max", region:"premolar", L:"7-9mm",  W:"6-7mm",  root:"14-17mm", roots:1, cusp:2, aacd:false, prep:"Crown or onlay",      mat:"Lithium disilicate",     margin:"Chamfer 0.3mm", biotype:"Medium",        emergence:"Zero tissue push",       note:"1 root. Good for onlay if sufficient structure remains."},
-  {n:5, name:"Max 1st Premolar",   short:"1st Premolar",     arch:"max", region:"premolar", L:"7-9mm",  W:"7-8mm",  root:"14-17mm", roots:2, cusp:2, aacd:false, prep:"Crown or onlay",      mat:"Lithium disilicate",     margin:"Chamfer 0.3mm", biotype:"Medium",        emergence:"Zero tissue push",       note:"Often 2 roots (buccal/palatal). Careful margin placement."},
-  {n:6, name:"Max Canine",         short:"Canine",           arch:"max", region:"anterior", L:"10-12mm",W:"7-8mm",  root:"17-20mm", roots:1, cusp:1, aacd:true,  prep:"Veneer or crown",     mat:"Pressed lithium disilicate",margin:"Feather/chamfer 0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"AACD: canine gingival level = central. Longest root. Critical for anterior guidance."},
-  {n:7, name:"Max Lateral Incisor",short:"Lateral",          arch:"max", region:"anterior", L:"7-10mm", W:"6-7mm",  root:"13-15mm", roots:1, cusp:0, aacd:true,  prep:"Veneer or no-prep",   mat:"Pressed lithium disilicate",margin:"Feather 0.1-0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"AACD: laterals 0.5mm more coronal than centrals. Most variable tooth morphology."},
-  {n:8, name:"Max Central Incisor",short:"Central (R)",      arch:"max", region:"anterior", L:"9-12mm", W:"8-9mm",  root:"14-17mm", roots:1, cusp:0, aacd:true,  prep:"Veneer or no-prep",   mat:"Pressed lithium disilicate",margin:"Feather 0.1-0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"AACD: W:L ratio 75–80%. Right central. Midline reference tooth."},
-  {n:9, name:"Max Central Incisor",short:"Central (L)",      arch:"max", region:"anterior", L:"9-12mm", W:"8-9mm",  root:"14-17mm", roots:1, cusp:0, aacd:true,  prep:"Veneer or no-prep",   mat:"Pressed lithium disilicate",margin:"Feather 0.1-0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"AACD: W:L ratio 75–80%. Left central. Mirror symmetry with #8 critical."},
-  {n:10,name:"Max Lateral Incisor",short:"Lateral",          arch:"max", region:"anterior", L:"7-10mm", W:"6-7mm",  root:"13-15mm", roots:1, cusp:0, aacd:true,  prep:"Veneer or no-prep",   mat:"Pressed lithium disilicate",margin:"Feather 0.1-0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"AACD: laterals 0.5mm more coronal than centrals. Mirror of #7."},
-  {n:11,name:"Max Canine",         short:"Canine",           arch:"max", region:"anterior", L:"10-12mm",W:"7-8mm",  root:"17-20mm", roots:1, cusp:1, aacd:true,  prep:"Veneer or crown",     mat:"Pressed lithium disilicate",margin:"Feather/chamfer 0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"Mirror of #6. Left canine guidance. Critical esthetic zone."},
-  {n:12,name:"Max 1st Premolar",   short:"1st Premolar",     arch:"max", region:"premolar", L:"7-9mm",  W:"7-8mm",  root:"14-17mm", roots:2, cusp:2, aacd:false, prep:"Crown or onlay",      mat:"Lithium disilicate",     margin:"Chamfer 0.3mm", biotype:"Medium",        emergence:"Zero tissue push",       note:"Mirror of #5. Often 2 roots."},
-  {n:13,name:"Max 2nd Premolar",   short:"2nd Premolar",     arch:"max", region:"premolar", L:"7-9mm",  W:"6-7mm",  root:"14-17mm", roots:1, cusp:2, aacd:false, prep:"Crown or onlay",      mat:"Lithium disilicate",     margin:"Chamfer 0.3mm", biotype:"Medium",        emergence:"Zero tissue push",       note:"Mirror of #4."},
-  {n:14,name:"Max 1st Molar",      short:"1st Molar",        arch:"max", region:"molar",    L:"6-8mm",  W:"10-11mm",root:"20-24mm", roots:3, cusp:4, aacd:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Thick-flat",    emergence:"Furcation barrel",      note:"Mirror of #3. Palatal root longest."},
-  {n:15,name:"Max 2nd Molar",      short:"2nd Molar",        arch:"max", region:"molar",    L:"6-8mm",  W:"9-11mm", root:"18-22mm", roots:3, cusp:4, aacd:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Thick-flat",    emergence:"Furcation barrel",      note:"Mirror of #2."},
-  {n:16,name:"Max 3rd Molar",      short:"Wisdom",           arch:"max", region:"molar",    L:"6-7mm",  W:"8-10mm", root:"11-14mm", roots:3, cusp:4, aacd:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Variable",      emergence:"Standard",              note:"Mirror of #1. Aberrant morphology common."},
+  {n:1, name:"Max 3rd Molar",      short:"Wisdom",           arch:"max", region:"molar",    L:"6-7mm",  W:"8-10mm", root:"11-14mm", roots:3, cusp:4, aep:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Variable",      emergence:"Standard",              note:"Often aberrant morphology. Verify root anatomy."},
+  {n:2, name:"Max 2nd Molar",      short:"2nd Molar",        arch:"max", region:"molar",    L:"6-8mm",  W:"9-11mm", root:"18-22mm", roots:3, cusp:4, aep:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Thick-flat",    emergence:"Furcation barrel",      note:"3 roots — MB, DB, Palatal. Furcation shaping critical."},
+  {n:3, name:"Max 1st Molar",      short:"1st Molar",        arch:"max", region:"molar",    L:"6-8mm",  W:"10-11mm",root:"20-24mm", roots:3, cusp:4, aep:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Thick-flat",    emergence:"Furcation barrel",      note:"Largest surface area tooth. High occlusal load."},
+  {n:4, name:"Max 2nd Premolar",   short:"2nd Premolar",     arch:"max", region:"premolar", L:"7-9mm",  W:"6-7mm",  root:"14-17mm", roots:1, cusp:2, aep:false, prep:"Crown or onlay",      mat:"Lithium disilicate",     margin:"Chamfer 0.3mm", biotype:"Medium",        emergence:"Zero tissue push",       note:"1 root. Good for onlay if sufficient structure remains."},
+  {n:5, name:"Max 1st Premolar",   short:"1st Premolar",     arch:"max", region:"premolar", L:"7-9mm",  W:"7-8mm",  root:"14-17mm", roots:2, cusp:2, aep:false, prep:"Crown or onlay",      mat:"Lithium disilicate",     margin:"Chamfer 0.3mm", biotype:"Medium",        emergence:"Zero tissue push",       note:"Often 2 roots (buccal/palatal). Careful margin placement."},
+  {n:6, name:"Max Canine",         short:"Canine",           arch:"max", region:"anterior", L:"10-12mm",W:"7-8mm",  root:"17-20mm", roots:1, cusp:1, aep:true,  prep:"Veneer or crown",     mat:"Pressed lithium disilicate",margin:"Feather/chamfer 0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"AEP: canine gingival level = central. Longest root. Critical for anterior guidance."},
+  {n:7, name:"Max Lateral Incisor",short:"Lateral",          arch:"max", region:"anterior", L:"7-10mm", W:"6-7mm",  root:"13-15mm", roots:1, cusp:0, aep:true,  prep:"Veneer or no-prep",   mat:"Pressed lithium disilicate",margin:"Feather 0.1-0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"AEP: laterals 0.5mm more coronal than centrals. Most variable tooth morphology."},
+  {n:8, name:"Max Central Incisor",short:"Central (R)",      arch:"max", region:"anterior", L:"9-12mm", W:"8-9mm",  root:"14-17mm", roots:1, cusp:0, aep:true,  prep:"Veneer or no-prep",   mat:"Pressed lithium disilicate",margin:"Feather 0.1-0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"AEP: W:L ratio 75–80%. Right central. Midline reference tooth."},
+  {n:9, name:"Max Central Incisor",short:"Central (L)",      arch:"max", region:"anterior", L:"9-12mm", W:"8-9mm",  root:"14-17mm", roots:1, cusp:0, aep:true,  prep:"Veneer or no-prep",   mat:"Pressed lithium disilicate",margin:"Feather 0.1-0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"AEP: W:L ratio 75–80%. Left central. Mirror symmetry with #8 critical."},
+  {n:10,name:"Max Lateral Incisor",short:"Lateral",          arch:"max", region:"anterior", L:"7-10mm", W:"6-7mm",  root:"13-15mm", roots:1, cusp:0, aep:true,  prep:"Veneer or no-prep",   mat:"Pressed lithium disilicate",margin:"Feather 0.1-0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"AEP: laterals 0.5mm more coronal than centrals. Mirror of #7."},
+  {n:11,name:"Max Canine",         short:"Canine",           arch:"max", region:"anterior", L:"10-12mm",W:"7-8mm",  root:"17-20mm", roots:1, cusp:1, aep:true,  prep:"Veneer or crown",     mat:"Pressed lithium disilicate",margin:"Feather/chamfer 0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"Mirror of #6. Left canine guidance. Critical esthetic zone."},
+  {n:12,name:"Max 1st Premolar",   short:"1st Premolar",     arch:"max", region:"premolar", L:"7-9mm",  W:"7-8mm",  root:"14-17mm", roots:2, cusp:2, aep:false, prep:"Crown or onlay",      mat:"Lithium disilicate",     margin:"Chamfer 0.3mm", biotype:"Medium",        emergence:"Zero tissue push",       note:"Mirror of #5. Often 2 roots."},
+  {n:13,name:"Max 2nd Premolar",   short:"2nd Premolar",     arch:"max", region:"premolar", L:"7-9mm",  W:"6-7mm",  root:"14-17mm", roots:1, cusp:2, aep:false, prep:"Crown or onlay",      mat:"Lithium disilicate",     margin:"Chamfer 0.3mm", biotype:"Medium",        emergence:"Zero tissue push",       note:"Mirror of #4."},
+  {n:14,name:"Max 1st Molar",      short:"1st Molar",        arch:"max", region:"molar",    L:"6-8mm",  W:"10-11mm",root:"20-24mm", roots:3, cusp:4, aep:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Thick-flat",    emergence:"Furcation barrel",      note:"Mirror of #3. Palatal root longest."},
+  {n:15,name:"Max 2nd Molar",      short:"2nd Molar",        arch:"max", region:"molar",    L:"6-8mm",  W:"9-11mm", root:"18-22mm", roots:3, cusp:4, aep:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Thick-flat",    emergence:"Furcation barrel",      note:"Mirror of #2."},
+  {n:16,name:"Max 3rd Molar",      short:"Wisdom",           arch:"max", region:"molar",    L:"6-7mm",  W:"8-10mm", root:"11-14mm", roots:3, cusp:4, aep:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Variable",      emergence:"Standard",              note:"Mirror of #1. Aberrant morphology common."},
   // MANDIBULAR
-  {n:17,name:"Mand 3rd Molar",     short:"Wisdom",           arch:"mand",region:"molar",    L:"6-7mm",  W:"8-10mm", root:"11-14mm", roots:2, cusp:4, aacd:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Variable",      emergence:"Standard",              note:"Often impacted or aberrant. Verify IAN proximity."},
-  {n:18,name:"Mand 2nd Molar",     short:"2nd Molar",        arch:"mand",region:"molar",    L:"6-7mm",  W:"9-10mm", root:"18-21mm", roots:2, cusp:4, aacd:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Thick-flat",    emergence:"Furcation barrel",      note:"2 roots (mesial/distal). IAN clearance check required."},
-  {n:19,name:"Mand 1st Molar",     short:"1st Molar",        arch:"mand",region:"molar",    L:"6-8mm",  W:"10-11mm",root:"20-22mm", roots:2, cusp:4, aacd:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Thick-flat",    emergence:"Furcation barrel",      note:"Most common implant site. IAN clearance ≥2mm mandatory."},
-  {n:20,name:"Mand 2nd Premolar",  short:"2nd Premolar",     arch:"mand",region:"premolar", L:"7-8mm",  W:"6-7mm",  root:"14-16mm", roots:1, cusp:2, aacd:false, prep:"Crown or onlay",      mat:"Lithium disilicate",     margin:"Chamfer 0.3mm", biotype:"Medium",        emergence:"Zero tissue push",       note:"1 root. Good onlay candidate."},
-  {n:21,name:"Mand 1st Premolar",  short:"1st Premolar",     arch:"mand",region:"premolar", L:"7-9mm",  W:"6-7mm",  root:"14-16mm", roots:1, cusp:1, aacd:false, prep:"Crown or onlay",      mat:"Lithium disilicate",     margin:"Chamfer 0.3mm", biotype:"Medium",        emergence:"Zero tissue push",       note:"1 root. Verify mental foramen proximity."},
-  {n:22,name:"Mand Canine",        short:"Canine",           arch:"mand",region:"anterior", L:"9-10mm", W:"6-7mm",  root:"16-18mm", roots:1, cusp:1, aacd:true,  prep:"Veneer or crown",     mat:"Pressed lithium disilicate",margin:"Chamfer 0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"Important for guidance. Narrower than maxillary canine."},
-  {n:23,name:"Mand Lateral Incisor",short:"Lateral",         arch:"mand",region:"anterior", L:"8-10mm", W:"5-6mm",  root:"14-16mm", roots:1, cusp:0, aacd:true,  prep:"Veneer or no-prep",   mat:"Pressed lithium disilicate",margin:"Feather 0.1-0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"Narrowest mandibular anterior. Often rotated mesially."},
-  {n:24,name:"Mand Central Incisor",short:"Central (L)",     arch:"mand",region:"anterior", L:"8-10mm", W:"5-6mm",  root:"13-15mm", roots:1, cusp:0, aacd:true,  prep:"Veneer or no-prep",   mat:"Pressed lithium disilicate",margin:"Feather 0.1-0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"Smallest tooth in mouth. Left mandibular central."},
-  {n:25,name:"Mand Central Incisor",short:"Central (R)",     arch:"mand",region:"anterior", L:"8-10mm", W:"5-6mm",  root:"13-15mm", roots:1, cusp:0, aacd:true,  prep:"Veneer or no-prep",   mat:"Pressed lithium disilicate",margin:"Feather 0.1-0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"Smallest tooth in mouth. Right mandibular central."},
-  {n:26,name:"Mand Lateral Incisor",short:"Lateral",         arch:"mand",region:"anterior", L:"8-10mm", W:"5-6mm",  root:"14-16mm", roots:1, cusp:0, aacd:true,  prep:"Veneer or no-prep",   mat:"Pressed lithium disilicate",margin:"Feather 0.1-0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"Mirror of #23."},
-  {n:27,name:"Mand Canine",        short:"Canine",           arch:"mand",region:"anterior", L:"9-10mm", W:"6-7mm",  root:"16-18mm", roots:1, cusp:1, aacd:true,  prep:"Veneer or crown",     mat:"Pressed lithium disilicate",margin:"Chamfer 0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"Mirror of #22."},
-  {n:28,name:"Mand 1st Premolar",  short:"1st Premolar",     arch:"mand",region:"premolar", L:"7-9mm",  W:"6-7mm",  root:"14-16mm", roots:1, cusp:1, aacd:false, prep:"Crown or onlay",      mat:"Lithium disilicate",     margin:"Chamfer 0.3mm", biotype:"Medium",        emergence:"Zero tissue push",       note:"Mirror of #21."},
-  {n:29,name:"Mand 2nd Premolar",  short:"2nd Premolar",     arch:"mand",region:"premolar", L:"7-8mm",  W:"6-7mm",  root:"14-16mm", roots:1, cusp:2, aacd:false, prep:"Crown or onlay",      mat:"Lithium disilicate",     margin:"Chamfer 0.3mm", biotype:"Medium",        emergence:"Zero tissue push",       note:"Mirror of #20."},
-  {n:30,name:"Mand 1st Molar",     short:"1st Molar",        arch:"mand",region:"molar",    L:"6-8mm",  W:"10-11mm",root:"20-22mm", roots:2, cusp:4, aacd:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Thick-flat",    emergence:"Furcation barrel",      note:"Mirror of #19. Common crown and implant site."},
-  {n:31,name:"Mand 2nd Molar",     short:"2nd Molar",        arch:"mand",region:"molar",    L:"6-7mm",  W:"9-10mm", root:"18-21mm", roots:2, cusp:4, aacd:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Thick-flat",    emergence:"Furcation barrel",      note:"Mirror of #18."},
-  {n:32,name:"Mand 3rd Molar",     short:"Wisdom",           arch:"mand",region:"molar",    L:"6-7mm",  W:"8-10mm", root:"11-14mm", roots:2, cusp:4, aacd:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Variable",      emergence:"Standard",              note:"Mirror of #17. Eruption and angulation variable."},
+  {n:17,name:"Mand 3rd Molar",     short:"Wisdom",           arch:"mand",region:"molar",    L:"6-7mm",  W:"8-10mm", root:"11-14mm", roots:2, cusp:4, aep:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Variable",      emergence:"Standard",              note:"Often impacted or aberrant. Verify IAN proximity."},
+  {n:18,name:"Mand 2nd Molar",     short:"2nd Molar",        arch:"mand",region:"molar",    L:"6-7mm",  W:"9-10mm", root:"18-21mm", roots:2, cusp:4, aep:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Thick-flat",    emergence:"Furcation barrel",      note:"2 roots (mesial/distal). IAN clearance check required."},
+  {n:19,name:"Mand 1st Molar",     short:"1st Molar",        arch:"mand",region:"molar",    L:"6-8mm",  W:"10-11mm",root:"20-22mm", roots:2, cusp:4, aep:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Thick-flat",    emergence:"Furcation barrel",      note:"Most common implant site. IAN clearance ≥2mm mandatory."},
+  {n:20,name:"Mand 2nd Premolar",  short:"2nd Premolar",     arch:"mand",region:"premolar", L:"7-8mm",  W:"6-7mm",  root:"14-16mm", roots:1, cusp:2, aep:false, prep:"Crown or onlay",      mat:"Lithium disilicate",     margin:"Chamfer 0.3mm", biotype:"Medium",        emergence:"Zero tissue push",       note:"1 root. Good onlay candidate."},
+  {n:21,name:"Mand 1st Premolar",  short:"1st Premolar",     arch:"mand",region:"premolar", L:"7-9mm",  W:"6-7mm",  root:"14-16mm", roots:1, cusp:1, aep:false, prep:"Crown or onlay",      mat:"Lithium disilicate",     margin:"Chamfer 0.3mm", biotype:"Medium",        emergence:"Zero tissue push",       note:"1 root. Verify mental foramen proximity."},
+  {n:22,name:"Mand Canine",        short:"Canine",           arch:"mand",region:"anterior", L:"9-10mm", W:"6-7mm",  root:"16-18mm", roots:1, cusp:1, aep:true,  prep:"Veneer or crown",     mat:"Pressed lithium disilicate",margin:"Chamfer 0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"Important for guidance. Narrower than maxillary canine."},
+  {n:23,name:"Mand Lateral Incisor",short:"Lateral",         arch:"mand",region:"anterior", L:"8-10mm", W:"5-6mm",  root:"14-16mm", roots:1, cusp:0, aep:true,  prep:"Veneer or no-prep",   mat:"Pressed lithium disilicate",margin:"Feather 0.1-0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"Narrowest mandibular anterior. Often rotated mesially."},
+  {n:24,name:"Mand Central Incisor",short:"Central (L)",     arch:"mand",region:"anterior", L:"8-10mm", W:"5-6mm",  root:"13-15mm", roots:1, cusp:0, aep:true,  prep:"Veneer or no-prep",   mat:"Pressed lithium disilicate",margin:"Feather 0.1-0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"Smallest tooth in mouth. Left mandibular central."},
+  {n:25,name:"Mand Central Incisor",short:"Central (R)",     arch:"mand",region:"anterior", L:"8-10mm", W:"5-6mm",  root:"13-15mm", roots:1, cusp:0, aep:true,  prep:"Veneer or no-prep",   mat:"Pressed lithium disilicate",margin:"Feather 0.1-0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"Smallest tooth in mouth. Right mandibular central."},
+  {n:26,name:"Mand Lateral Incisor",short:"Lateral",         arch:"mand",region:"anterior", L:"8-10mm", W:"5-6mm",  root:"14-16mm", roots:1, cusp:0, aep:true,  prep:"Veneer or no-prep",   mat:"Pressed lithium disilicate",margin:"Feather 0.1-0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"Mirror of #23."},
+  {n:27,name:"Mand Canine",        short:"Canine",           arch:"mand",region:"anterior", L:"9-10mm", W:"6-7mm",  root:"16-18mm", roots:1, cusp:1, aep:true,  prep:"Veneer or crown",     mat:"Pressed lithium disilicate",margin:"Chamfer 0.3mm",biotype:"Thin-scalloped","emergence":"Zero tissue push",note:"Mirror of #22."},
+  {n:28,name:"Mand 1st Premolar",  short:"1st Premolar",     arch:"mand",region:"premolar", L:"7-9mm",  W:"6-7mm",  root:"14-16mm", roots:1, cusp:1, aep:false, prep:"Crown or onlay",      mat:"Lithium disilicate",     margin:"Chamfer 0.3mm", biotype:"Medium",        emergence:"Zero tissue push",       note:"Mirror of #21."},
+  {n:29,name:"Mand 2nd Premolar",  short:"2nd Premolar",     arch:"mand",region:"premolar", L:"7-8mm",  W:"6-7mm",  root:"14-16mm", roots:1, cusp:2, aep:false, prep:"Crown or onlay",      mat:"Lithium disilicate",     margin:"Chamfer 0.3mm", biotype:"Medium",        emergence:"Zero tissue push",       note:"Mirror of #20."},
+  {n:30,name:"Mand 1st Molar",     short:"1st Molar",        arch:"mand",region:"molar",    L:"6-8mm",  W:"10-11mm",root:"20-22mm", roots:2, cusp:4, aep:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Thick-flat",    emergence:"Furcation barrel",      note:"Mirror of #19. Common crown and implant site."},
+  {n:31,name:"Mand 2nd Molar",     short:"2nd Molar",        arch:"mand",region:"molar",    L:"6-7mm",  W:"9-10mm", root:"18-21mm", roots:2, cusp:4, aep:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Thick-flat",    emergence:"Furcation barrel",      note:"Mirror of #18."},
+  {n:32,name:"Mand 3rd Molar",     short:"Wisdom",           arch:"mand",region:"molar",    L:"6-7mm",  W:"8-10mm", root:"11-14mm", roots:2, cusp:4, aep:false, prep:"Crown full coverage", mat:"Zirconia MT monolithic", margin:"Chamfer 0.5mm", biotype:"Variable",      emergence:"Standard",              note:"Mirror of #17. Eruption and angulation variable."},
 ];
 
 const REGION_COLOR = { anterior:C.teal, premolar:C.blue, molar:C.purple };
@@ -1326,7 +1326,7 @@ function ToothLibScreen() {
                   onMouseLeave={e=>{if(sel?.n!==t.n){e.currentTarget.style.background=C.surface; e.currentTarget.style.borderColor=C.border;}}}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:4 }}>
                     <span style={{ fontSize:15, fontWeight:800, color:sel?.n===t.n?col:C.ink, fontFamily:C.font }}>#{t.n}</span>
-                    {t.aacd && <span style={{ fontSize:8, padding:"1px 5px", borderRadius:3, background:C.tealDim, color:C.teal, fontFamily:C.font, fontWeight:700 }}>AACD</span>}
+                    {t.aep && <span style={{ fontSize:8, padding:"1px 5px", borderRadius:3, background:C.tealDim, color:C.teal, fontFamily:C.font, fontWeight:700 }}>AEP</span>}
                   </div>
                   <div style={{ fontSize:11, fontWeight:600, color:C.ink, marginBottom:2, lineHeight:1.3 }}>{t.name}</div>
                   <div style={{ fontSize:9, color:col, fontWeight:600, textTransform:"capitalize" }}>{t.region}</div>
@@ -1372,7 +1372,7 @@ function ToothLibScreen() {
                 <div style={{ fontSize:18, fontWeight:800, color:regionCol, fontFamily:C.font }}>#{sel.n}</div>
                 <div style={{ fontSize:13, fontWeight:700, color:C.ink, marginTop:2 }}>{sel.name}</div>
                 <div style={{ fontSize:10, color:regionCol, marginTop:4, textTransform:"capitalize", fontWeight:600 }}>{sel.arch==="max"?"Maxillary":"Mandibular"} {sel.region}</div>
-                {sel.aacd && <div style={{ display:"inline-block", marginTop:6, padding:"2px 8px", borderRadius:4, background:C.tealDim, color:C.teal, fontSize:9, fontFamily:C.font, fontWeight:700 }}>AACD GUIDELINES APPLY</div>}
+                {sel.aep && <div style={{ display:"inline-block", marginTop:6, padding:"2px 8px", borderRadius:4, background:C.tealDim, color:C.teal, fontSize:9, fontFamily:C.font, fontWeight:700 }}>AEP GUIDELINES APPLY</div>}
               </div>
 
               {/* Anatomy */}
