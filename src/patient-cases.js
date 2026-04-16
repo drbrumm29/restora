@@ -6,38 +6,108 @@ export const PATIENTS = [
     id: "carrie-pappas",
     name: "Carrie Pappas",
     initials: "CP",
-    teeth: "#18, #19",
-    type: "Implant Restoration",
-    subtype: "Screw-retained crowns",
-    status: "In progress",
-    statusColor: "blue",
-    route: "implant",
+    teeth: "#4-#13",
+    type: "Smile Makeover",
+    subtype: "10-Unit Veneers",
+    status: "Files needed",
+    statusColor: "warn",
+    route: "prep",
     system: "lab",
-    age: 58,
+    age: null,
     gender: "F",
-    notes: "FMX 6/16/25 shows two integrated implants at #18 and #19 with existing crowns. Patient presents for crown replacement / evaluation. Scan date: 2026-04-08.",
-    files: [
-      { name: "upper_scan.beb",     slot: "upper", size: 14680064, subdir:"carrie" },
-      { name: "lower_scan.beb",     slot: "lower", size: 14680064, subdir:"carrie" },
-      { name: "fmx_radiograph.png", slot: "xray",  size: 319488,   subdir:"carrie" },
+    notes: `10-UNIT VENEER CASE · #4-#13 · YOUTHFUL + 1MM LONGER + GOLDEN RATIO
+
+═══════════════════════════════════════════════
+⚠️ CLINICAL FLAGS — RESOLVE BEFORE WAX-UP
+═══════════════════════════════════════════════
+
+1. GOLDEN RATIO vs RED PROPORTION
+   Strict 1:1.618 Phi across 10 units produces unnaturally narrow laterals.
+   Preston: only 17% of naturally attractive smiles match golden ratio.
+   RECOMMEND: Ward's RED Proportion (70%) or hybrid — golden ratio contradicts the "youthful" goal.
+
+2. 1MM LENGTHENING — VERIFY BEFORE COMMITTING
+   • Incisal display at repose (target 2-4mm for youthful)
+   • F/V phonetics — incisal edge must touch wet-dry line of lower lip
+   • S phonetics — minimum speaking space maintained
+   • Envelope of function — NO protrusive interferences
+   • Smile arc consonance — 1mm steepens arc relative to laterals
+
+3. SCOPE OF #4 AND #13 (first premolars)
+   Borderline esthetic zone. Verify via full animated smile photography:
+   • Does patient display #4 and #13 on full smile?
+   • Buccal corridor width — narrow smiles don't reach bicuspids
+   • If not displayed → over-treatment risk
+
+4. STRUPP/BRUMM ANTERIOR GUIDANCE + 1MM EXTENSION
+   • Canine rise (mutually protected occlusion)
+   • Posterior disclusion in ALL excursives
+   • Long centric 1-1.5mm flat acceptable
+   • Anterior coupling with incisal-edge-to-edge protrusive path
+   ⚠️ 1MM EXTENSION MUST NOT CREATE PROTRUSIVE INTERFERENCE
+
+5. "YOUTHFUL" vs "GOLDEN" PARAMETER CONFLICT
+   Youthful = W:L ~80%, open embrasures, subtle mamelons, brighter value
+   Golden = stylized, can read as mature/mannequin
+   → Pick one dominant direction
+
+═══════════════════════════════════════════════
+✅ REQUIRED PRE-PREP WORKFLOW
+═══════════════════════════════════════════════
+
+1. Diagnostic wax-up at proposed dimensions
+2. Intraoral mock-up (Structur/BIS-GMA) — phonetics + smile verification
+3. Full facial photo series (repose, E-pos, full smile, lateral, protrusive path)
+4. Facebow transfer — MANDATORY for 10-unit occlusal change
+5. Material: Pressed lithium disilicate (e.max) for 10-unit strength/esthetics balance
+6. Shade: Uniform chroma, slightly higher value on #8, #9
+7. Confirm protrusive path post-extension
+
+═══════════════════════════════════════════════
+AEP PARAMETERS SET
+═══════════════════════════════════════════════
+• Tooth form: ovoid (youthful dominant)
+• W:L ratio: 80% (youthful, not strict golden)
+• Proportion: Hybrid RED (70%) with golden reference for centrals
+• Length adjustment: +1.0mm (pending verification)
+• Embrasures: open (youthful)
+• Characterization: subtle mamelons, incisal halo, cervical chroma
+• Smile arc: consonant with lower lip
+• Midline: align to facial midline
+• Material: Pressed e.max
+• Occlusion: Strupp/Brumm protocol — canine rise, posterior disclusion all excursives`,
+    parameters: {
+      tooth_form: "ovoid",
+      width_length_ratio: 0.80,
+      length_adjustment_mm: 1.0,
+      embrasures: "open",
+      characterization: "subtle",
+      shade: "BL2 uniform, +1 value centrals",
+      proportion: "Hybrid RED 70% + golden reference centrals",
+      occlusion: "Strupp/Brumm — canine rise, posterior disclusion",
+    },
+    clinicalFlags: [
+      { level: "critical", text: "Golden ratio vs RED proportion conflict — only 17% of natural attractive smiles match Phi" },
+      { level: "warning",  text: "Verify 1mm extension against phonetics + envelope of function" },
+      { level: "warning",  text: "Confirm #4/#13 display on full smile before committing to 10-unit" },
+      { level: "warning",  text: "Youthful vs Golden parameter tension — pick dominant direction" },
+      { level: "info",     text: "Facebow transfer mandatory for 10-unit occlusal case" },
     ],
-    // AI-analyzed tooth chart — derived from FMX radiograph
-    toothChart: {
-      implants:   [18, 19],
-      missing:    [],
-      restored:   [2, 3, 14, 15, 29, 30],  // teeth showing amalgam/composite on FMX
-      endodontic: [],
-      present:    [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,20,21,22,23,24,25,26,27,28,29,30,31,32],
-    },
-    xrayAnalysis: {
-      date: "2026-04-08",
-      type: "Full Mouth Series (FMX)",
-      findings: [
-        { severity: "info",     tooth: 18, note: "Implant fixture with existing crown — integrated, no peri-implant pathology visible" },
-        { severity: "info",     tooth: 19, note: "Implant fixture with existing crown — integrated, no peri-implant pathology visible" },
-        { severity: "info",     tooth: null, note: "Remaining dentition intact — restorations present in posterior segments" },
-      ],
-    },
+    files: [
+      { name: "carrie_pappas_upper_arch.stl", slot: "upper", size: 37888 },
+      { name: "carrie_pappas_lower_arch.stl", slot: "lower", size: 37888 },
+      { name: "carrie_pappas_prep_4.stl",     slot: "prep",  size: 9600  },
+      { name: "carrie_pappas_prep_5.stl",     slot: "prep2", size: 9600  },
+      { name: "carrie_pappas_prep_6.stl",     slot: "prep",  size: 9600  },
+      { name: "carrie_pappas_prep_7.stl",     slot: "prep2", size: 9600  },
+      { name: "carrie_pappas_prep_8.stl",     slot: "prep",  size: 9600  },
+      { name: "carrie_pappas_prep_9.stl",     slot: "prep2", size: 9600  },
+      { name: "carrie_pappas_prep_10.stl",    slot: "prep",  size: 9600  },
+      { name: "carrie_pappas_prep_11.stl",    slot: "prep2", size: 9600  },
+      { name: "carrie_pappas_prep_12.stl",    slot: "prep",  size: 9600  },
+      { name: "carrie_pappas_prep_13.stl",    slot: "prep2", size: 9600  },
+      { name: "carrie_pappas_bite_reg.stl",   slot: "bite",  size: 18944 },
+    ],
   },
   {
     id: "sarah-johnson",
