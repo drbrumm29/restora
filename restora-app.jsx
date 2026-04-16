@@ -3,6 +3,10 @@ import { PATIENTS, loadPatientFiles } from "./src/patient-cases.js";
 import RadiographScreen from "./src/RadiographScreen.jsx";
 import AIAssistant from "./src/AIAssistant.jsx";
 import RestorationCADNew from "./src/RestorationCAD.jsx";
+import SmileSimulationNew from "./src/SmileSimulation.jsx";
+import ImplantPlanningNew from "./src/ImplantPlanning.jsx";
+import ExportHubNew from "./src/ExportHub.jsx";
+import FullArchNew from "./src/FullArchScreen.jsx";
 
 // ═══════════════════════════════════════════════════════════════════
 // RESTORA — Complete Integrated App
@@ -1899,11 +1903,11 @@ export default function App() {
       case "ai-design-guide": return <AIDesignGuide navigate={navigate} activePatient={activePatient} />;
       case "design-bridge":   return <DesignBridge navigate={navigate} activePatient={activePatient} clearPatient={()=>setActivePatient(null)} />;
       case "restoration-cad": return <RestorationCADNew navigate={navigate} activePatient={activePatient} />;
-      case "smile-sim":       return <SmileSimScreen navigate={navigate} />;
-      case "implant-plan":    return <ImplantPlanScreen navigate={navigate} />;
+      case "smile-sim":       return <SmileSimulationNew activePatient={activePatient} />;
+      case "implant-plan":    return <ImplantPlanningNew activePatient={activePatient} />;
       case "radiograph":      return <RadiographScreen />;
-      case "full-arch":       return <FullArchScreen />;
-      case "export":          return <ExportScreen />;
+      case "full-arch":       return <FullArchNew activePatient={activePatient} />;
+      case "export":          return <ExportHubNew activePatient={activePatient} />;
       case "tooth-library":   return <ToothLibScreen />;
       default: return (
         <div style={{ flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,color:C.muted }}>
