@@ -1,0 +1,1349 @@
+import { useState, useReducer, useCallback, useEffect, useRef } from "react";
+
+// ═══════════════════════════════════════════════════════════════════
+// RESTORA — Complete Integrated App
+// AI Design Guide · Design Systems Bridge · All Clinical Screens
+// ═══════════════════════════════════════════════════════════════════
+
+// ── Design tokens ──────────────────────────────────────────────────
+const C = {
+  bg:"#0a0d12", surface:"#111318", surface2:"#181d24", surface3:"#1f252e",
+  border:"#252c36", borderSoft:"#1a2029",
+  ink:"#e8edf4", muted:"#7a8594", light:"#3d4654",
+  teal:"#00b48a", tealDim:"rgba(0,180,138,.1)", tealBorder:"rgba(0,180,138,.2)",
+  gold:"#d4a843", goldDim:"rgba(212,168,67,.08)",
+  amber:"#f0883e", amberDim:"rgba(240,136,62,.08)",
+  purple:"#a78bfa", purpleDim:"rgba(167,139,250,.08)",
+  blue:"#3b82f6", blueDim:"rgba(59,130,246,.08)",
+  red:"#ef4444", green:"#22c55e", warn:"#f59e0b",
+  font:"'DM Mono','JetBrains Mono',monospace",
+  sans:"system-ui,-apple-system,sans-serif",
+  shadow:"0 1px 3px rgba(0,0,0,.4),0 4px 16px rgba(0,0,0,.3)",
+};
+
+// ── Navigation screens ─────────────────────────────────────────────
+const SCREENS = {
+  "dashboard":        { label:"Dashboard",        icon:"⬡", section:"Start" },
+  "ai-design-guide":  { label:"AI Design Guide",  icon:"◈", section:"Start", badge:"New" },
+  "design-bridge":    { label:"Design Systems",   icon:"✦", section:"Design", badge:"3 Systems" },
+  "restoration-cad":  { label:"Restoration CAD",  icon:"✏️", section:"Design" },
+  "smile-sim":        { label:"Smile Simulation", icon:"◉", section:"Design" },
+  "implant-plan":     { label:"Implant Planning", icon:"◆", section:"Planning" },
+  "full-arch":        { label:"Full Arch",         icon:"⬟", section:"Planning" },
+  "export":           { label:"Export Hub",        icon:"↑",  section:"Delivery" },
+  "tooth-library":    { label:"Tooth Library",     icon:"⊡",  section:"Library" },
+};
+
+// ── Shared atoms ───────────────────────────────────────────────────
+const Btn = ({ children, onClick, variant="primary", disabled=false, style={} }) => {
+  const base = { padding:"10px 18px", borderRadius:6, fontSize:12, fontWeight:700,
+    cursor:disabled?"not-allowed":"pointer", fontFamily:C.sans, border:"none",
+    transition:"all .15s", letterSpacing:.3, ...style };
+  const v = {
+    primary:{ background:disabled?C.border:C.teal, color:disabled?C.muted:"white",
+      boxShadow:disabled?"none":"0 4px 12px rgba(0,180,138,.25)" },
+    secondary:{ background:C.surface2, color:C.muted, border:`1px solid ${C.border}` },
+    ghost:{ background:"transparent", color:C.muted, border:`1px solid ${C.border}` },
+    danger:{ background:"rgba(239,68,68,.1)", color:C.red, border:`1px solid rgba(239,68,68,.2)` },
+  };
+  return <button onClick={disabled?undefined:onClick} style={{...base,...v[variant]}}>{children}</button>;
+};
+
+const Tag = ({ label, color=C.teal, dim=C.tealDim }) => (
+  <span style={{ padding:"2px 7px", borderRadius:3, fontSize:9, fontWeight:700,
+    letterSpacing:.8, background:dim, color, border:`1px solid ${color}25`,
+    fontFamily:C.font }}>
+    {label}
+  </span>
+);
+
+const Card = ({ children, style={} }) => (
+  <div style={{ background:C.surface, borderRadius:10, border:`1px solid ${C.border}`,
+    boxShadow:C.shadow, ...style }}>
+    {children}
+  </div>
+);
+
+const SectionHead = ({ label, color=C.teal }) => (
+  <div style={{ fontSize:9, fontFamily:C.font, color, letterSpacing:2,
+    textTransform:"uppercase", marginBottom:10 }}>{label}</div>
+);
+
+const FlagRow = ({ level, msg }) => {
+  const map = { pass:[C.green,"✓"], warning:[C.warn,"⚠"], critical:[C.red,"✕"] };
+  const [col, ic] = map[level] || [C.muted,"·"];
+  return (
+    <div style={{ display:"flex", gap:8, padding:"8px 12px", borderRadius:5,
+      background:col+"12", border:`1px solid ${col}25`, marginBottom:5, alignItems:"flex-start" }}>
+      <span style={{ color:col, fontSize:11, flexShrink:0 }}>{ic}</span>
+      <span style={{ fontSize:11, color:C.muted, lineHeight:1.5 }}>{msg}</span>
+    </div>
+  );
+};
+
+// ══════════════════════════════════════════════════════════════════
+// AI DESIGN GUIDE  (full implementation)
+// ══════════════════════════════════════════════════════════════════
+const CASE_TYPES = {
+  "cosmetic-anterior":   { label:"Cosmetic Anterior",   icon:"✦", sub:"Veneers · Crowns · Bonding", color:C.gold, dim:C.goldDim, systems:["Smile Design","Mill Connect","Lab CAD"] },
+  "smile-makeover":      { label:"Smile Makeover",      icon:"◈", sub:"Full arch esthetic redesign", color:C.teal, dim:C.tealDim, systems:["Smile Design","Lab CAD"] },
+  "restorative-post":    { label:"Restorative Posterior",icon:"⬡", sub:"Crowns · Onlays · Inlays",  color:C.purple, dim:C.purpleDim, systems:["Mill Connect","Lab CAD"] },
+  "implant-single":      { label:"Single Implant",      icon:"◆", sub:"Crown on implant",           color:C.amber, dim:C.amberDim, systems:["Lab CAD","Mill Connect"] },
+  "implant-full-arch":   { label:"Full Arch Implant",   icon:"⬟", sub:"Bar · Zirconia · FP3",       color:C.teal, dim:C.tealDim, systems:["Lab CAD"] },
+};
+const ESTHETIC_P = [
+  { id:"smile_arc",       label:"Smile arc",                 type:"select", aacd:true,  tip:"AACD: consonant with lower lip — never flat", options:["Consonant (ideal)","Slightly flat","Reverse — correct","Maintain existing"], def:"Consonant (ideal)" },
+  { id:"wl_ratio",        label:"Central W:L ratio",         type:"range",  aacd:true,  tip:"AACD: 75–80%", min:65, max:90, step:1, unit:"%", def:78 },
+  { id:"incisal_display", label:"Incisal display at repose", type:"range",  aacd:true,  tip:"AACD: 1–3mm typical", min:0, max:5, step:.5, unit:"mm", def:2 },
+  { id:"midline",         label:"Midline treatment",         type:"select", aacd:true,  tip:"AACD: >1mm deviation perceptible", options:["Align to facial midline","Maintain existing","Shift right","Shift left","Accept <1mm deviation"], def:"Align to facial midline" },
+  { id:"gingival_levels", label:"Gingival levels",           type:"select", aacd:true,  tip:"Centrals=canines, laterals 0.5mm coronal", options:["Centrals = canines · laterals 0.5mm coronal (AACD)","All level","Custom"], def:"Centrals = canines · laterals 0.5mm coronal (AACD)" },
+  { id:"tooth_form",      label:"Tooth form",                type:"select", aacd:false, options:["Square-tapering","Ovoid","Triangular","Square","Match existing"], def:"Square-tapering" },
+  { id:"embrasure",       label:"Embrasure form",            type:"select", aacd:true,  tip:"AACD: progressive, open anteriorly", options:["Open (youthful)","Closed (mature)","Progressive"], def:"Progressive" },
+  { id:"surface_texture", label:"Surface texture",           type:"select", aacd:false, options:["Smooth / high gloss","Subtle perikymata","Moderate texture","Pronounced / natural"], def:"Subtle perikymata" },
+  { id:"shade",           label:"Target shade",              type:"select", aacd:false, options:["BL1","BL2","BL3","BL4","A1","A2","A3","B1","Match existing"], def:"A1" },
+  { id:"characterisation",label:"Characterisation",         type:"multi",  aacd:false, options:["Mamelons","Incisal halo","Cervical chroma","Surface crazing","None"], def:["Incisal halo","Cervical chroma"] },
+];
+const PREP_P = [
+  { id:"prep_type",       label:"Preparation type",  type:"select", tip:"Minimal prep protocol priority", options:["No-prep","Minimal <0.3mm","Veneer 0.3–0.5mm","Crown full coverage","Onlay","Inlay"], def:"Minimal <0.3mm" },
+  { id:"margin_type",     label:"Margin type",        type:"select", options:["Feather/knife","Chamfer 0.3mm","Chamfer 0.5mm","Heavy chamfer","Rounded shoulder"], def:"Chamfer 0.3mm" },
+  { id:"margin_location", label:"Margin location",    type:"select", tip:"Supragingival preferred — technique manual", options:["Supragingival 0.5–1mm (ideal)","Equigingival","Subgingival 0.5mm","Subgingival 1mm"], def:"Supragingival 0.5–1mm (ideal)" },
+  { id:"facial_reduction",label:"Facial reduction",   type:"range",  tip:"Flag if >0.5mm", min:0, max:1.5, step:.1, unit:"mm", def:.3 },
+  { id:"material",        label:"Material",           type:"select", options:["Pressed lithium disilicate","Milled lithium disilicate","Feldspathic porcelain","Zirconia HT","Zirconia MT monolithic","Cast gold","PFM","Composite resin"], def:"Pressed lithium disilicate" },
+  { id:"emergence",       label:"Emergence profile",  type:"select", tip:"Concave/flat subgingival — never convex", options:["Zero tissue push (ideal)","Minimal push <0.5mm","Standard","Follow shaped root"], def:"Zero tissue push (ideal)" },
+];
+const OCC_P = [
+  { id:"occlusal_scheme", label:"Occlusal scheme",    type:"select", options:["Canine-guided (default)","Mutually protected","Group function","Lingualized"], def:"Canine-guided (default)" },
+  { id:"ant_guidance",    label:"Anterior guidance",  type:"select", options:["Establish + posterior disclusion","Maintain existing","Shallow — bruxism concern","Steep — not modifying"], def:"Establish + posterior disclusion" },
+  { id:"centric",         label:"Centric contacts",   type:"select", options:["Flat planes (ideal)","Cusp tip — must adjust","Tripod contacts","No contacts (implant)"], def:"Flat planes (ideal)" },
+];
+const IMPL_P = [
+  { id:"impl_zone",   label:"Zone",              type:"select", options:["Anterior esthetic","Posterior load-bearing","Canine (guidance concern)"], def:"Posterior load-bearing" },
+  { id:"rest_type",   label:"Restoration type",  type:"select", options:["Screw-retained (preferred)","Cement-retained","Custom abutment + crown","Bar overdenture"], def:"Screw-retained (preferred)" },
+  { id:"platform_sw", label:"Platform switching", type:"toggle", tip:"Preserves crestal bone", def:true },
+  { id:"pros_space",  label:"Prosthetic space",   type:"range", min:5, max:20, step:.5, unit:"mm", def:10 },
+  { id:"imm_load",    label:"Immediate loading",  type:"toggle", tip:"Requires ≥35 Ncm", def:false },
+];
+
+function ParamCtrl({ p, val, set }) {
+  const s = { width:"100%", padding:"7px 10px", borderRadius:5, border:`1px solid ${C.border}`,
+    background:C.surface2, color:C.ink, fontSize:12, fontFamily:C.sans, outline:"none" };
+  if (p.type==="select") return (
+    <select value={val} onChange={e=>set(e.target.value)} style={s}>
+      {p.options.map(o=><option key={o}>{o}</option>)}
+    </select>
+  );
+  if (p.type==="range") return (
+    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+      <input type="range" min={p.min} max={p.max} step={p.step} value={val}
+        onChange={e=>set(parseFloat(e.target.value))} style={{ flex:1, accentColor:C.teal }} />
+      <span style={{ fontSize:12, fontFamily:C.font, color:C.teal, minWidth:44, textAlign:"right" }}>{val}{p.unit}</span>
+    </div>
+  );
+  if (p.type==="toggle") return (
+    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+      <div onClick={()=>set(!val)} style={{ width:38, height:20, borderRadius:10, cursor:"pointer", position:"relative",
+        background:val?C.teal:C.surface3, border:`1px solid ${val?C.teal:C.border}`, transition:"all .2s" }}>
+        <div style={{ position:"absolute", top:2, left:val?20:2, width:14, height:14, borderRadius:7, background:"white", transition:"left .2s" }} />
+      </div>
+      <span style={{ fontSize:11, color:val?C.teal:C.muted }}>{val?"Yes":"No"}</span>
+    </div>
+  );
+  if (p.type==="multi") {
+    const sel = Array.isArray(val) ? val : [];
+    return (
+      <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+        {p.options.map(o=>{
+          const on=sel.includes(o);
+          return <button key={o} onClick={()=>set(on?sel.filter(s=>s!==o):[...sel,o])}
+            style={{ padding:"4px 10px", borderRadius:4, fontSize:11, cursor:"pointer", fontFamily:C.sans,
+              border:`1px solid ${on?C.teal:C.border}`, background:on?C.tealDim:"transparent", color:on?C.teal:C.muted }}>{o}</button>;
+        })}
+      </div>
+    );
+  }
+  return null;
+}
+
+function AIDesignGuide({ navigate }) {
+  const [step, setStep] = useState("case"); // case | params | generating | brief | suite
+  const [caseType, setCaseType] = useState(null);
+  const [tab, setTab] = useState("esthetic");
+  const [params, setParams] = useState({});
+  const [brief, setBrief] = useState(null);
+  const [activeSys, setActiveSys] = useState("smile");
+  const [err, setErr] = useState(null);
+
+  const setP = (id, v) => setParams(p=>({...p,[id]:v}));
+
+  const tabs = [
+    { id:"esthetic", label:"Esthetic", ps:ESTHETIC_P },
+    { id:"prep",     label:"Prep + Material", ps:PREP_P },
+    { id:"occlusion",label:"Occlusion", ps:OCC_P },
+    ...(caseType?.includes("implant")?[{ id:"implant", label:"Implant", ps:IMPL_P }]:[]),
+  ];
+  const tabPs = tabs.find(t=>t.id===tab)?.ps || [];
+
+  const selectCase = (k) => {
+    const defs = {};
+    [...ESTHETIC_P,...PREP_P,...OCC_P,...IMPL_P].forEach(p=>{ defs[p.id]=p.def; });
+    setCaseType(k); setParams(defs); setStep("params"); setTab("esthetic");
+  };
+
+  const generate = async () => {
+    setErr(null); setStep("generating");
+    const lines = Object.entries(params).map(([k,v])=>`${k}: ${Array.isArray(v)?v.join(", "):v}`).join("\n");
+    const ct = CASE_TYPES[caseType];
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages",{
+        method:"POST", headers:{ "Content-Type":"application/json","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true" },
+        body:JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1600,
+          messages:[{role:"user",content:`You are Restora AI. Generate a dental design brief for a ${ct.label} case.
+
+PARAMETERS:\n${lines}
+
+AACD BASELINES: Central W:L 75-80%. Smile arc consonant with lower lip. Incisal display 1-3mm repose. Midline >1mm = flag. Centrals=canines gingival level, laterals 0.5mm coronal. Emergence: concave/flat subgingival. Minimal prep: prefer <0.5mm facial reduction. Centric contacts on flat planes. Posterior disclusion in all excursives.
+
+Respond ONLY valid JSON no preamble:
+{"summary":"2-sentence clinical summary","esthetic_decisions":[{"parameter":"name","value":"val","rationale":"1 sentence","aacd":true}],"restorative_decisions":[{"parameter":"name","value":"val","rationale":"1 sentence"}],"protocol_flags":[{"level":"pass|warning|critical","message":"text"}],"suite_routing":{"smile_design":{"role":"desc","tasks":["t1","t2"],"active":true},"mill_connect":{"role":"desc","tasks":["t1","t2"],"active":true},"lab_cad":{"role":"desc","tasks":["t1"],"active":false}},"lab_rx":"3-sentence prescription"}`}] })
+      });
+      const data = await res.json();
+      const raw = data.content?.[0]?.text || "{}";
+      setBrief(JSON.parse(raw.replace(/```json|```/g,"").trim()));
+      setStep("brief");
+    } catch(e) { setErr(e.message||"Failed"); setStep("params"); }
+  };
+
+  const ct = caseType ? CASE_TYPES[caseType] : null;
+  const SUITE = {
+    smile:{ title:"Smile Design",icon:"◉",color:C.amber,rk:"smile_design",actions:["Upload patient photos","Generate smile preview","Import mockup overlay","Send to Restora 3D"] },
+    mill: { title:"Mill Connect",icon:"◈",color:C.blue,  rk:"mill_connect",actions:["Upload prep scans","Generate crown design","Run occlusion check","Send to mill unit"] },
+    lab:  { title:"Lab CAD",    icon:"⬡",color:C.purple, rk:"lab_cad",     actions:["Upload full scan package","Generate lab design","Export STL + design file","Send to lab"] },
+  };
+
+  return (
+    <div style={{ flex:1, overflow:"auto", background:C.bg, color:C.ink, fontFamily:C.sans }}>
+      {/* Header strip */}
+      <div style={{ padding:"14px 28px 0", display:"flex", alignItems:"center", gap:10, borderBottom:`1px solid ${C.border}`, paddingBottom:14 }}>
+        <span style={{ fontSize:10, fontFamily:C.font, color:C.teal, letterSpacing:3 }}>AI DESIGN GUIDE</span>
+        {ct&&<Tag label={ct.label.toUpperCase()} color={ct.color} dim={ct.dim} />}
+        <div style={{ flex:1 }} />
+        {/* Breadcrumb */}
+        {["Case","Parameters","AI Brief","Suite"].map((s,i)=>{
+          const si=["case","params","brief","suite"].indexOf(step==="generating"?"params":step);
+          const done=i<si, active=i===si;
+          return <div key={s} style={{ display:"flex",alignItems:"center",gap:5 }}>
+            <span style={{ fontSize:9,fontFamily:C.font,padding:"2px 8px",borderRadius:3,
+              background:active?C.teal:done?C.tealDim:"transparent",
+              color:active?"white":done?C.teal:C.light,
+              border:`1px solid ${active?C.teal:done?C.tealBorder:C.border}` }}>
+              {done?"✓ ":""}{s}
+            </span>
+            {i<3&&<span style={{ fontSize:9,color:C.light }}>›</span>}
+          </div>;
+        })}
+        {step!=="case"&&<Btn onClick={()=>{setStep("case");setCaseType(null);setBrief(null);}} variant="ghost" style={{ marginLeft:8, padding:"4px 12px",fontSize:10 }}>↺ Reset</Btn>}
+      </div>
+
+      <div style={{ padding:"32px 28px", maxWidth:880, margin:"0 auto" }}>
+
+        {/* ── CASE TYPE ── */}
+        {step==="case"&&(
+          <div>
+            <div style={{ textAlign:"center", marginBottom:36 }}>
+              <div style={{ fontSize:22,fontWeight:700,letterSpacing:"-.03em",marginBottom:8 }}>What type of case are you designing?</div>
+              <div style={{ fontSize:13,color:C.muted }}>Select a case type to load the AACD + technique manual parameter set.</div>
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              {Object.entries(CASE_TYPES).map(([k,def])=>(
+                <button key={k} onClick={()=>selectCase(k)}
+                  style={{ textAlign:"left",padding:22,borderRadius:10,cursor:"pointer",border:`1px solid ${C.border}`,
+                    background:C.surface,fontFamily:C.sans,transition:"all .15s",boxShadow:C.shadow }}
+                  onMouseEnter={e=>{e.currentTarget.style.borderColor=def.color;e.currentTarget.style.background=def.dim;}}
+                  onMouseLeave={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.background=C.surface;}}>
+                  <div style={{ display:"flex",justifyContent:"space-between",marginBottom:12 }}>
+                    <span style={{ fontSize:20,color:def.color }}>{def.icon}</span>
+                    <div style={{ display:"flex",gap:4,flexWrap:"wrap" }}>
+                      {def.systems.map(s=><span key={s} style={{ fontSize:9,padding:"2px 6px",borderRadius:3,background:C.surface2,color:C.muted,fontFamily:C.font }}>{s}</span>)}
+                    </div>
+                  </div>
+                  <div style={{ fontSize:14,fontWeight:700,marginBottom:3,color:C.ink }}>{def.label}</div>
+                  <div style={{ fontSize:11,color:def.color,marginBottom:8,fontStyle:"italic" }}>{def.sub}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── PARAMETERS ── */}
+        {step==="params"&&ct&&(
+          <div>
+            <div style={{ display:"flex",alignItems:"center",gap:12,marginBottom:24 }}>
+              <button onClick={()=>setStep("case")} style={{ fontSize:12,color:C.muted,background:"none",border:"none",cursor:"pointer",padding:0 }}>←</button>
+              <span style={{ fontSize:18,color:ct.color }}>{ct.icon}</span>
+              <div>
+                <div style={{ fontSize:15,fontWeight:700 }}>{ct.label}</div>
+                <div style={{ fontSize:11,color:C.muted }}>AACD + technique manual parameters</div>
+              </div>
+            </div>
+            {/* Tabs */}
+            <div style={{ display:"flex",gap:2,marginBottom:24,borderBottom:`1px solid ${C.border}` }}>
+              {tabs.map(t=>(
+                <button key={t.id} onClick={()=>setTab(t.id)} style={{ padding:"8px 16px",fontSize:10,fontWeight:600,letterSpacing:.5,
+                  cursor:"pointer",fontFamily:C.sans,border:"none",
+                  borderBottom:`2px solid ${tab===t.id?C.teal:"transparent"}`,
+                  background:"transparent",color:tab===t.id?C.teal:C.muted,transition:"all .15s" }}>
+                  {t.label.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            {/* Param list */}
+            {tabPs.map((p,i)=>(
+              <div key={p.id} style={{ padding:"14px 0",borderBottom:i<tabPs.length-1?`1px solid ${C.borderSoft}`:"none" }}>
+                <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap" }}>
+                  <span style={{ fontSize:12,fontWeight:600,color:C.ink }}>{p.label}</span>
+                  {p.aacd&&<Tag label="AACD" color={C.teal} dim={C.tealDim} />}
+                  {p.tip&&<span style={{ fontSize:10,color:C.light,fontStyle:"italic" }}>{p.tip}</span>}
+                </div>
+                <ParamCtrl p={p} val={params[p.id]??p.def} set={v=>setP(p.id,v)} />
+              </div>
+            ))}
+            {err&&<div style={{ marginTop:14,padding:"10px 14px",borderRadius:5,background:"rgba(239,68,68,.1)",border:"1px solid rgba(239,68,68,.2)",color:C.red,fontSize:12 }}>{err}</div>}
+            <Btn onClick={generate} style={{ marginTop:28,width:"100%",padding:"14px 28px",fontSize:13,borderRadius:8 }}>
+              Generate AI Design Brief →
+            </Btn>
+          </div>
+        )}
+
+        {/* ── GENERATING ── */}
+        {step==="generating"&&(
+          <div style={{ textAlign:"center",marginTop:80 }}>
+            <div style={{ fontSize:28,marginBottom:16 }}>◈</div>
+            <div style={{ fontSize:14,fontWeight:600,marginBottom:6 }}>Generating design brief…</div>
+            <div style={{ fontSize:12,color:C.muted,lineHeight:1.7 }}>Applying AACD guidelines · Technique manual protocol · Routing to design suite</div>
+            <div style={{ marginTop:28,height:2,background:C.surface2,borderRadius:1,overflow:"hidden" }}>
+              <div style={{ height:"100%",background:C.teal,borderRadius:1,width:"65%",animation:"sl 1.3s ease-in-out infinite alternate" }} />
+            </div>
+            <style>{`@keyframes sl{from{margin-left:0}to{margin-left:35%}}`}</style>
+          </div>
+        )}
+
+        {/* ── BRIEF ── */}
+        {step==="brief"&&brief&&ct&&(
+          <div>
+            <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:22 }}>
+              <div>
+                <div style={{ fontSize:16,fontWeight:700,marginBottom:4 }}>AI Design Brief</div>
+                <div style={{ fontSize:11,color:C.muted }}>{ct.label} · AACD guidelines + technique manual</div>
+              </div>
+              <div style={{ display:"flex",gap:8 }}>
+                <Btn onClick={()=>setStep("params")} variant="ghost" style={{ padding:"8px 14px",fontSize:11 }}>← Edit params</Btn>
+                <Btn onClick={()=>setStep("suite")} style={{ padding:"10px 18px",fontSize:12 }}>Open Design Suite →</Btn>
+              </div>
+            </div>
+            <Card style={{ padding:18,marginBottom:14 }}>
+              <SectionHead label="Clinical Summary" />
+              <p style={{ fontSize:13,lineHeight:1.7,color:C.ink,margin:0 }}>{brief.summary}</p>
+            </Card>
+            <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12 }}>
+              <Card style={{ overflow:"hidden" }}>
+                <div style={{ padding:"10px 14px",borderBottom:`1px solid ${C.border}`,fontSize:9,fontFamily:C.font,color:C.gold,letterSpacing:2 }}>ESTHETIC DECISIONS</div>
+                {brief.esthetic_decisions?.map((d,i)=>(
+                  <div key={i} style={{ padding:"10px 14px",borderBottom:i<brief.esthetic_decisions.length-1?`1px solid ${C.borderSoft}`:"none" }}>
+                    <div style={{ display:"flex",gap:6,alignItems:"center",marginBottom:3 }}>
+                      <span style={{ fontSize:11,fontWeight:600,color:C.ink }}>{d.parameter}</span>
+                      {d.aacd&&<Tag label="AACD" color={C.teal} dim={C.tealDim} />}
+                    </div>
+                    <div style={{ fontSize:11,color:C.gold,marginBottom:3,fontFamily:C.font }}>{d.value}</div>
+                    <div style={{ fontSize:10,color:C.muted,lineHeight:1.5 }}>{d.rationale}</div>
+                  </div>
+                ))}
+              </Card>
+              <Card style={{ overflow:"hidden" }}>
+                <div style={{ padding:"10px 14px",borderBottom:`1px solid ${C.border}`,fontSize:9,fontFamily:C.font,color:C.purple,letterSpacing:2 }}>RESTORATIVE DECISIONS</div>
+                {brief.restorative_decisions?.map((d,i)=>(
+                  <div key={i} style={{ padding:"10px 14px",borderBottom:i<brief.restorative_decisions.length-1?`1px solid ${C.borderSoft}`:"none" }}>
+                    <div style={{ fontSize:11,fontWeight:600,color:C.ink,marginBottom:3 }}>{d.parameter}</div>
+                    <div style={{ fontSize:11,color:C.purple,marginBottom:3,fontFamily:C.font }}>{d.value}</div>
+                    <div style={{ fontSize:10,color:C.muted,lineHeight:1.5 }}>{d.rationale}</div>
+                  </div>
+                ))}
+              </Card>
+            </div>
+            <Card style={{ padding:14,marginBottom:12 }}>
+              <SectionHead label="Protocol Compliance" />
+              {brief.protocol_flags?.map((f,i)=><FlagRow key={i} level={f.level} msg={f.message} />)}
+            </Card>
+            <Card style={{ padding:14,marginBottom:12 }}>
+              <SectionHead label="Design Suite Routing" />
+              <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10 }}>
+                {Object.entries(SUITE).map(([k,sys])=>{
+                  const r=brief.suite_routing?.[sys.rk];
+                  if(!r)return null;
+                  return (
+                    <div key={k} style={{ padding:12,borderRadius:6,border:`1px solid ${r.active?sys.color+"40":C.border}`,background:r.active?sys.color+"0d":C.surface2,opacity:r.active?1:.4 }}>
+                      <div style={{ display:"flex",gap:6,alignItems:"center",marginBottom:6 }}>
+                        <span style={{ fontSize:10,fontWeight:700,color:r.active?sys.color:C.muted,fontFamily:C.font,letterSpacing:.5 }}>{sys.title}</span>
+                        {r.active&&<span style={{ fontSize:8,padding:"1px 5px",borderRadius:3,background:sys.color+"20",color:sys.color }}>ON</span>}
+                      </div>
+                      <div style={{ fontSize:10,color:C.muted,marginBottom:6 }}>{r.role}</div>
+                      {r.tasks?.map((t,i)=><div key={i} style={{ fontSize:10,color:C.light,marginBottom:2 }}>· {t}</div>)}
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+            <Card style={{ padding:14 }}>
+              <SectionHead label="Lab Prescription" />
+              <p style={{ fontSize:12,lineHeight:1.8,color:C.muted,margin:0 }}>{brief.lab_rx}</p>
+            </Card>
+          </div>
+        )}
+
+        {/* ── SUITE ── */}
+        {step==="suite"&&brief&&ct&&(
+          <div style={{ display:"flex",gap:0,height:"calc(100vh - 200px)",margin:"0 -28px" }}>
+            {/* System sidebar */}
+            <div style={{ width:180,background:C.surface,borderRight:`1px solid ${C.border}`,flexShrink:0,padding:"14px 0",display:"flex",flexDirection:"column" }}>
+              <div style={{ padding:"0 14px 10px",fontSize:9,color:C.light,letterSpacing:2,fontFamily:C.font }}>DESIGN SUITE</div>
+              {Object.entries(SUITE).map(([k,sys])=>{
+                const r=brief.suite_routing?.[sys.rk];
+                const on=r?.active; const sel=activeSys===k;
+                return (
+                  <button key={k} onClick={()=>on&&setActiveSys(k)} style={{ display:"flex",alignItems:"center",gap:10,padding:"10px 14px",border:"none",cursor:on?"pointer":"not-allowed",background:sel?sys.color+"15":"transparent",borderLeft:`2px solid ${sel?sys.color:"transparent"}`,opacity:on?1:.3,fontFamily:C.sans,transition:"all .15s" }}>
+                    <span style={{ fontSize:14,color:sys.color }}>{sys.icon}</span>
+                    <div style={{ textAlign:"left" }}>
+                      <div style={{ fontSize:11,fontWeight:600,color:sel?sys.color:C.ink }}>{sys.title}</div>
+                      {!on&&<div style={{ fontSize:9,color:C.light }}>Not active</div>}
+                    </div>
+                  </button>
+                );
+              })}
+              <div style={{ flex:1 }} />
+              <div style={{ padding:"12px 14px",borderTop:`1px solid ${C.border}` }}>
+                <button onClick={()=>setStep("brief")} style={{ fontSize:10,color:C.muted,background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:C.sans }}>← Back to brief</button>
+              </div>
+            </div>
+            {/* Active system panel */}
+            <div style={{ flex:1,overflow:"auto",padding:"28px 32px" }}>
+              {(()=>{
+                const sys=SUITE[activeSys];
+                const r=brief.suite_routing?.[sys.rk];
+                return <SuiteWorkspace sys={sys} route={r} brief={brief} />;
+              })()}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SuiteWorkspace({ sys, route, brief }) {
+  const [done, setDone] = useState([]);
+  const toggle = (a) => setDone(p=>p.includes(a)?p.filter(x=>x!==a):[...p,a]);
+  return (
+    <div style={{ maxWidth:600 }}>
+      <div style={{ display:"flex",alignItems:"center",gap:14,marginBottom:24,paddingBottom:18,borderBottom:`1px solid ${C.border}` }}>
+        <span style={{ fontSize:22,color:sys.color }}>{sys.icon}</span>
+        <div>
+          <div style={{ fontSize:15,fontWeight:700,color:C.ink }}>{sys.title}</div>
+          <div style={{ fontSize:11,color:C.muted }}>{route?.role}</div>
+        </div>
+      </div>
+      <SectionHead label="Tasks for this case" color={sys.color} />
+      {route?.tasks?.map((t,i)=>(
+        <div key={i} style={{ display:"flex",gap:10,padding:"9px 0",borderBottom:i<route.tasks.length-1?`1px solid ${C.borderSoft}`:"none",alignItems:"center" }}>
+          <div style={{ width:18,height:18,borderRadius:4,border:`1px solid ${sys.color}50`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:sys.color+"10" }}>
+            <span style={{ fontSize:9,color:sys.color }}>{i+1}</span>
+          </div>
+          <span style={{ fontSize:12,color:C.ink }}>{t}</span>
+        </div>
+      ))}
+      <Card style={{ padding:14,margin:"20px 0" }}>
+        <SectionHead label="Design Brief" />
+        <p style={{ fontSize:11,color:C.muted,lineHeight:1.7,margin:"0 0 12px" }}>{brief.summary}</p>
+        <SectionHead label="Lab Rx" />
+        <p style={{ fontSize:11,color:C.muted,lineHeight:1.7,margin:0 }}>{brief.lab_rx}</p>
+      </Card>
+      <div style={{ display:"flex",flexDirection:"column",gap:7 }}>
+        {sys.actions.map((a,i)=>{
+          const d=done.includes(a);
+          return <button key={a} onClick={()=>toggle(a)} style={{ padding:"11px 18px",borderRadius:5,fontSize:12,fontWeight:600,border:`1px solid ${d?sys.color:C.border}`,background:i===0?sys.color:(d?sys.color+"15":"transparent"),color:i===0?"white":(d?sys.color:C.muted),cursor:"pointer",fontFamily:C.sans,textAlign:"left",display:"flex",alignItems:"center",justifyContent:"space-between",transition:"all .15s" }}>
+            <span>{a}</span>{d&&i!==0&&<span style={{ fontSize:10 }}>✓</span>}
+          </button>;
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// DESIGN SYSTEMS BRIDGE  (full auto mode implementation)
+// ══════════════════════════════════════════════════════════════════
+const SYSTEMS = {
+  mill:  { name:"Mill Connect",icon:"◈",color:C.blue,  dim:C.blueDim,  tag:"In-Office CAD/CAM", modes:["prep","implant"], desc:"In-office mill workflow. Upload prep scan → Restora AI designs → route to mill unit. Same-day delivery.", formats:["STL","DXD"] },
+  smile: { name:"Smile Design",icon:"◉",color:C.amber, dim:C.amberDim, tag:"Photo-Based DSD",    modes:["mockup","prep"],  desc:"Upload patient photos → cloud DSD designs the smile → import mockup overlay and tooth dimensions back for restoration correlation.", formats:["PNG overlay","Dimensions"] },
+  lab:   { name:"Lab CAD",    icon:"⬡",color:C.purple, dim:C.purpleDim,tag:"Full Lab Design",    modes:["prep","mockup","implant"], desc:"Export full design package to your lab CAD platform. Bridge, implant bar, full arch, abutment. Round-trip STL import.", formats:["STL","Design file","DCM","Lab RX"] },
+};
+const MODES = {
+  prep:    { label:"Prep Restoration",icon:"🦷",desc:"Crown, veneer, onlay — on a prepared tooth",
+    slots:[{id:"upper",label:"Upper arch scan",req:true,accept:".stl,.obj",hint:"STL from any IOS"},{id:"lower",label:"Lower arch scan",req:true,accept:".stl,.obj",hint:"STL from any IOS"},{id:"bite",label:"Bite registration",req:false,accept:".stl,.obj",hint:"Optional — improves occlusion"},{id:"prep-photo",label:"Prep photo",req:false,accept:".jpg,.png",hint:"Retracted view post-prep"}] },
+  mockup:  { label:"Smile Mockup",icon:"😊",desc:"Digital smile design before any prep",
+    slots:[{id:"face-repose",label:"Full face — repose",req:true,accept:".jpg,.png,.heic",hint:"Lips relaxed, natural light"},{id:"face-smile",label:"Full face — smile",req:true,accept:".jpg,.png,.heic",hint:"Full smile"},{id:"retracted",label:"Retracted frontal",req:true,accept:".jpg,.png,.heic",hint:"Cheek retractors in"},{id:"lateral-r",label:"Lateral right",req:false,accept:".jpg,.png,.heic",hint:"Right buccal"},{id:"lateral-l",label:"Lateral left",req:false,accept:".jpg,.png,.heic",hint:"Left buccal"}] },
+  implant: { label:"Implant Restoration",icon:"🔩",desc:"Crown on implant, bridge, bar, or abutment design",
+    slots:[{id:"upper",label:"Upper arch scan",req:true,accept:".stl,.obj",hint:"With scan body in place"},{id:"lower",label:"Lower arch scan",req:true,accept:".stl,.obj",hint:"STL from any IOS"},{id:"cbct",label:"CBCT / DICOM",req:false,accept:".dcm,.zip",hint:"Required for guided surgery"},{id:"scan-body",label:"Scan body report",req:false,accept:".pdf,.csv",hint:"Manufacturer position data"}] },
+};
+
+function inferMode(files) {
+  const names=files.map(f=>f.name.toLowerCase()), exts=files.map(f=>f.name.split(".").pop()||"");
+  if(exts.some(e=>e==="dcm")||names.some(n=>n.includes("cbct")||n.includes("scanbody")||n.includes("implant"))) return {mode:"implant",confidence:.92,reason:"CBCT/scan body detected"};
+  if(exts.every(e=>["jpg","jpeg","png","heic"].includes(e))&&names.some(n=>n.includes("face")||n.includes("smile")||n.includes("retract"))) return {mode:"mockup",confidence:.9,reason:"Facial photos detected"};
+  if(exts.some(e=>["stl","obj","ply"].includes(e))) return {mode:"prep",confidence:.85,reason:"Arch STL scans detected"};
+  return null;
+}
+function pickSystem(mode, files) {
+  const names=files.map(f=>f.name.toLowerCase()),exts=files.map(f=>f.name.split(".").pop()||"");
+  if(mode==="implant"||exts.includes("dcm")) return {system:"lab",reason:"Lab CAD has full implant library + DICOM"};
+  if(mode==="mockup"&&exts.every(e=>["jpg","jpeg","png","heic"].includes(e))) return {system:"smile",reason:"Smile Design is photo-native"};
+  return {system:"mill",reason:"Mill Connect — fastest in-office workflow"};
+}
+
+function DesignBridge({ navigate }) {
+  const [step, setStep] = useState("mode"); // mode | system | files | status
+  const [mode, setMode] = useState(null);
+  const [system, setSystem] = useState(null);
+  const [slots, setSlots] = useState([]);
+  const [autoMode, setAutoMode] = useState(true);
+  const [detection, setDetection] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [countdown, setCountdown] = useState(null);
+  const [restType, setRestType] = useState("crown");
+  const [teeth, setTeeth] = useState("8, 9");
+  const [note, setNote] = useState("");
+  const [job, setJob] = useState(null);
+  const timerRef = useRef(null);
+
+  const restOpts = mode==="implant"?["implant-crown","implant-bridge","implant-bar","full-arch-zirconia"]:mode==="mockup"?["smile-mockup","digital-wax-up"]:["crown","veneer","onlay","inlay","bridge"];
+
+  const selectMode = (m) => {
+    setMode(m); setSystem(null);
+    setSlots(MODES[m].slots.map(s=>({...s,uploaded:false,file:null})));
+    setStep("system");
+  };
+
+  const autoDetect = (files) => {
+    const mr=inferMode(files); if(!mr)return;
+    const sr=pickSystem(mr.mode,files);
+    setDetection({mode:mr.mode,system:sr.system,modeReason:mr.reason,sysReason:sr.reason,confidence:mr.confidence});
+    setMode(mr.mode); setSystem(sr.system);
+    const sl=MODES[mr.mode].slots.map(s=>({...s,uploaded:false,file:null}));
+    const assigned=new Set();
+    files.forEach(f=>{
+      const ext=f.name.split(".").pop()||"",name=f.name.toLowerCase();
+      const slot=sl.find(s=>{
+        if(assigned.has(s.id)||!s.accept.includes(ext))return false;
+        if(s.id==="upper"&&(name.includes("upper")||name.includes("max")))return true;
+        if(s.id==="lower"&&(name.includes("lower")||name.includes("mand")))return true;
+        if(s.id==="cbct"&&(ext==="dcm"||name.includes("cbct")))return true;
+        if(!s.uploaded)return true; return false;
+      });
+      if(slot){slot.file=f;slot.uploaded=true;assigned.add(slot.id);}
+    });
+    setSlots(sl); setStep("files");
+  };
+
+  const uploadFile = (slotId, file) => {
+    setSlots(prev=>prev.map(s=>s.id===slotId?{...s,file,uploaded:true}:s));
+  };
+
+  // Auto-send countdown
+  useEffect(()=>{
+    if(!autoMode||step!=="files"||!mode||!system)return;
+    const req=slots.filter(s=>s.req), done=slots.filter(s=>s.req&&s.uploaded);
+    if(req.length>0&&done.length>=req.length){
+      setCountdown(5); let t=5;
+      timerRef.current=setInterval(()=>{
+        t-=1; if(t<=0){clearInterval(timerRef.current);setCountdown(null);send();}
+        else setCountdown(t);
+      },1000);
+    } else { if(timerRef.current)clearInterval(timerRef.current); setCountdown(null); }
+    return ()=>{if(timerRef.current)clearInterval(timerRef.current);};
+  },[slots,autoMode,step,mode,system]);
+
+  const send = () => {
+    const j={id:`RES-${Date.now()}`,system,mode,status:"uploading",progress:0,startedAt:new Date()};
+    setJob(j); setStep("status");
+    let p=0;
+    const iv=setInterval(()=>{
+      p+=Math.random()*18; if(p>=100){p=100;clearInterval(iv);setJob(prev=>({...prev,progress:100,status:"ready"}));}
+      else setJob(prev=>({...prev,progress:Math.round(p),status:p>40?"processing":"uploading"}));
+    },400);
+  };
+
+  const reset = ()=>{setStep("mode");setMode(null);setSystem(null);setSlots([]);setDetection(null);setJob(null);setCountdown(null);};
+  const reqDone=slots.filter(s=>s.req&&s.uploaded).length, reqTotal=slots.filter(s=>s.req).length;
+  const canSend=reqDone>=reqTotal&&reqTotal>0&&system;
+  const uploaded=slots.filter(s=>s.uploaded).length;
+  const sys=system?SYSTEMS[system]:null;
+
+  return (
+    <div style={{ flex:1,overflow:"auto",background:C.bg,color:C.ink,fontFamily:C.sans }}>
+      {/* Header */}
+      <div style={{ padding:"14px 28px",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${C.border}` }}>
+        <span style={{ fontSize:10,fontFamily:C.font,color:C.teal,letterSpacing:3 }}>DESIGN SYSTEMS BRIDGE</span>
+        {sys&&<Tag label={sys.name.toUpperCase()} color={sys.color} dim={sys.dim} />}
+        <div style={{ flex:1 }} />
+        {/* Auto toggle */}
+        <div style={{ display:"flex",alignItems:"center",gap:8 }}>
+          <span style={{ fontSize:11,color:autoMode?C.teal:C.muted,fontWeight:600 }}>AUTO</span>
+          <div onClick={()=>setAutoMode(a=>!a)} style={{ width:36,height:20,borderRadius:10,cursor:"pointer",background:autoMode?C.teal:C.border,position:"relative",transition:"background .2s" }}>
+            <div style={{ position:"absolute",top:2,left:autoMode?18:2,width:14,height:14,borderRadius:7,background:"white",transition:"left .2s" }} />
+          </div>
+        </div>
+        <Btn onClick={reset} variant="ghost" style={{ padding:"4px 12px",fontSize:10 }}>↺ Reset</Btn>
+      </div>
+
+      <div style={{ maxWidth:900,margin:"0 auto",padding:"32px 28px" }}>
+
+        {/* ── MODE ── */}
+        {step==="mode"&&(
+          <div>
+            <div style={{ marginBottom:28,textAlign:"center" }}>
+              <div style={{ fontSize:20,fontWeight:700,marginBottom:8 }}>What are you designing?</div>
+              <div style={{ fontSize:13,color:C.muted }}>{autoMode?"Drop files here — auto mode detects and routes automatically.":"Choose a case type."}</div>
+            </div>
+            {autoMode&&(
+              <div onDragOver={e=>{e.preventDefault();setDragOver(true);}} onDragLeave={()=>setDragOver(false)}
+                onDrop={e=>{e.preventDefault();setDragOver(false);const f=Array.from(e.dataTransfer.files);if(f.length)autoDetect(f);}}
+                style={{ border:`2px dashed ${dragOver?C.teal:C.tealBorder}`,borderRadius:12,padding:"36px 24px",textAlign:"center",
+                  background:dragOver?C.tealDim:"transparent",marginBottom:28,transition:"all .2s",cursor:"pointer" }}>
+                <div style={{ fontSize:28,marginBottom:10 }}>⚡</div>
+                <div style={{ fontSize:14,fontWeight:700,marginBottom:6 }}>Drop case files here</div>
+                <div style={{ fontSize:12,color:C.muted,marginBottom:16 }}>STL, DICOM, photos — auto detects case type + best system</div>
+                <label style={{ padding:"8px 20px",borderRadius:6,fontSize:12,fontWeight:600,background:C.teal,color:"white",cursor:"pointer" }}>
+                  Browse files
+                  <input type="file" multiple accept=".stl,.obj,.dcm,.jpg,.jpeg,.png,.heic,.pdf" style={{ display:"none" }}
+                    onChange={e=>{const f=Array.from(e.target.files||[]);if(f.length)autoDetect(f);}} />
+                </label>
+              </div>
+            )}
+            <div style={{ fontSize:11,color:C.muted,marginBottom:14,letterSpacing:1 }}>{autoMode?"OR SELECT MANUALLY:":"SELECT CASE TYPE:"}</div>
+            <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12 }}>
+              {Object.entries(MODES).map(([k,m])=>(
+                <button key={k} onClick={()=>selectMode(k)}
+                  style={{ textAlign:"left",padding:20,borderRadius:10,border:`1px solid ${C.border}`,background:C.surface,cursor:"pointer",fontFamily:C.sans,transition:"all .15s",boxShadow:C.shadow }}
+                  onMouseEnter={e=>{e.currentTarget.style.borderColor=C.teal;e.currentTarget.style.transform="translateY(-2px)";}}
+                  onMouseLeave={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.transform="";}}>
+                  <div style={{ fontSize:24,marginBottom:10 }}>{m.icon}</div>
+                  <div style={{ fontSize:13,fontWeight:700,marginBottom:4 }}>{m.label}</div>
+                  <div style={{ fontSize:11,color:C.muted,lineHeight:1.5 }}>{m.desc}</div>
+                  <div style={{ marginTop:12,fontSize:10,color:C.light,fontFamily:C.font }}>{m.slots.length} slots · {m.slots.filter(s=>s.req).length} required</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── SYSTEM ── */}
+        {step==="system"&&mode&&(
+          <div>
+            <button onClick={()=>setStep("mode")} style={{ fontSize:12,color:C.muted,background:"none",border:"none",cursor:"pointer",padding:"0 0 20px",fontFamily:C.sans }}>← Back</button>
+            <div style={{ fontSize:18,fontWeight:700,marginBottom:6 }}>{MODES[mode].icon} {MODES[mode].label} — Choose a system</div>
+            <div style={{ fontSize:12,color:C.muted,marginBottom:24 }}>Systems highlighted support this case type.</div>
+            <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14 }}>
+              {Object.entries(SYSTEMS).map(([k,s])=>{
+                const ok=s.modes.includes(mode);
+                return (
+                  <button key={k} onClick={()=>ok&&(setSystem(k),setStep("files"))} disabled={!ok}
+                    style={{ textAlign:"left",padding:22,borderRadius:10,border:`1px solid ${ok?s.color+"40":C.border}`,background:ok?s.dim:C.surface2,cursor:ok?"pointer":"not-allowed",opacity:ok?1:.4,fontFamily:C.sans,transition:"all .15s",boxShadow:C.shadow }}>
+                    <div style={{ display:"flex",gap:10,alignItems:"center",marginBottom:14 }}>
+                      <span style={{ fontSize:20,color:s.color }}>{s.icon}</span>
+                      <div>
+                        <div style={{ fontSize:14,fontWeight:700 }}>{s.name}</div>
+                        <div style={{ fontSize:10,color:C.muted,letterSpacing:.5 }}>{s.tag}</div>
+                      </div>
+                    </div>
+                    <div style={{ fontSize:11,color:C.muted,lineHeight:1.6,marginBottom:12 }}>{s.desc}</div>
+                    <div style={{ display:"flex",flexWrap:"wrap",gap:4 }}>
+                      {s.formats.map(f=><span key={f} style={{ padding:"2px 8px",borderRadius:3,fontSize:9,fontFamily:C.font,fontWeight:600,background:s.color+"15",color:s.color }}>{f}</span>)}
+                      <span style={{ padding:"2px 8px",borderRadius:3,fontSize:9,fontFamily:C.font,fontWeight:600,background:C.tealDim,color:C.teal }}>↔ Round-trip</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── FILES ── */}
+        {step==="files"&&mode&&sys&&(
+          <div>
+            <button onClick={()=>setStep("system")} style={{ fontSize:12,color:C.muted,background:"none",border:"none",cursor:"pointer",padding:"0 0 20px",fontFamily:C.sans }}>← Back</button>
+            {/* Auto detection banner */}
+            {autoMode&&detection&&(
+              <div style={{ marginBottom:16,padding:"12px 16px",borderRadius:8,background:C.tealDim,border:`1px solid ${C.tealBorder}`,display:"flex",gap:12,alignItems:"flex-start" }}>
+                <span style={{ fontSize:16,flexShrink:0 }}>⚡</span>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:11,fontWeight:700,color:C.teal,marginBottom:4 }}>Auto detected · {Math.round(detection.confidence*100)}% confidence</div>
+                  <div style={{ fontSize:11,color:C.muted,lineHeight:1.5 }}>
+                    <span style={{ fontWeight:600,color:C.ink }}>Case:</span> {MODES[detection.mode].label} — {detection.modeReason}<br/>
+                    <span style={{ fontWeight:600,color:C.ink }}>System:</span> {SYSTEMS[detection.system].name} — {detection.sysReason}
+                  </div>
+                </div>
+                <button onClick={()=>{setDetection(null);setStep("mode");}} style={{ fontSize:10,color:C.muted,background:"none",border:"none",cursor:"pointer",padding:"2px 6px",fontFamily:C.sans }}>Change</button>
+              </div>
+            )}
+            {/* Countdown */}
+            {countdown!==null&&(
+              <div style={{ marginBottom:14,padding:"10px 16px",borderRadius:7,background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.2)",display:"flex",alignItems:"center",justifyContent:"space-between" }}>
+                <div style={{ fontSize:12,color:C.warn }}>⚡ Auto-sending in <strong>{countdown}s</strong> — all required files ready</div>
+                <button onClick={()=>{clearInterval(timerRef.current);setCountdown(null);}} style={{ fontSize:11,color:C.warn,background:"none",border:"1px solid rgba(245,158,11,.3)",borderRadius:4,padding:"3px 10px",cursor:"pointer",fontFamily:C.sans }}>Cancel</button>
+              </div>
+            )}
+            <div style={{ display:"grid",gridTemplateColumns:"1fr 320px",gap:22 }}>
+              {/* File slots */}
+              <div>
+                <div style={{ marginBottom:18 }}>
+                  <div style={{ fontSize:16,fontWeight:700,marginBottom:4 }}>Upload case files</div>
+                  <div style={{ fontSize:12,color:C.muted,marginBottom:8 }}>{uploaded}/{slots.length} uploaded · {reqDone}/{reqTotal} required</div>
+                  <div style={{ height:3,background:C.border,borderRadius:2 }}>
+                    <div style={{ height:"100%",borderRadius:2,background:C.teal,width:slots.length?`${(uploaded/slots.length)*100}%`:"0%",transition:"width .3s" }} />
+                  </div>
+                </div>
+                {slots.map(slot=>(
+                  <div key={slot.id} style={{ padding:"12px 14px",borderRadius:8,border:`1px solid ${slot.uploaded?C.teal+"60":C.border}`,background:slot.uploaded?C.tealDim:C.surface,display:"flex",alignItems:"center",gap:12,marginBottom:8,transition:"all .2s" }}>
+                    <div style={{ width:30,height:30,borderRadius:7,flexShrink:0,background:slot.uploaded?C.teal:C.border,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,color:"white" }}>
+                      {slot.uploaded?"✓":"↑"}
+                    </div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ display:"flex",gap:6,alignItems:"center",marginBottom:2 }}>
+                        <span style={{ fontSize:12,fontWeight:600 }}>{slot.label}</span>
+                        {slot.req&&<Tag label="REQUIRED" color={C.warn} dim="rgba(245,158,11,.08)" />}
+                      </div>
+                      <div style={{ fontSize:11,color:C.muted }}>{slot.uploaded&&slot.file?slot.file.name:slot.hint}</div>
+                    </div>
+                    <label style={{ padding:"6px 12px",borderRadius:5,fontSize:11,fontWeight:600,border:`1px solid ${slot.uploaded?C.teal:C.border}`,color:slot.uploaded?C.teal:C.muted,background:"transparent",cursor:"pointer",whiteSpace:"nowrap" }}>
+                      {slot.uploaded?"Replace":"Upload"}
+                      <input type="file" accept={slot.accept} style={{ display:"none" }} onChange={e=>{const f=e.target.files?.[0];if(f)uploadFile(slot.id,f);}} />
+                    </label>
+                  </div>
+                ))}
+              </div>
+              {/* Right panel */}
+              <div style={{ display:"flex",flexDirection:"column",gap:12 }}>
+                <div style={{ padding:14,borderRadius:8,border:`1px solid ${sys.color+"40"}`,background:sys.dim }}>
+                  <div style={{ display:"flex",gap:10,alignItems:"center" }}>
+                    <span style={{ fontSize:18,color:sys.color }}>{sys.icon}</span>
+                    <div><div style={{ fontSize:13,fontWeight:700 }}>{sys.name}</div><div style={{ fontSize:10,color:C.muted }}>{sys.tag}</div></div>
+                  </div>
+                </div>
+                <Card style={{ padding:14 }}>
+                  <div style={{ fontSize:10,fontWeight:700,color:C.muted,letterSpacing:.8,marginBottom:10 }}>RESTORATION TYPE</div>
+                  <div style={{ display:"flex",flexWrap:"wrap",gap:6 }}>
+                    {restOpts.map(r=>(
+                      <button key={r} onClick={()=>setRestType(r)} style={{ padding:"5px 10px",borderRadius:5,fontSize:11,fontWeight:600,border:`1px solid ${restType===r?C.teal:C.border}`,background:restType===r?C.tealDim:"transparent",color:restType===r?C.teal:C.muted,cursor:"pointer",fontFamily:C.sans }}>{r}</button>
+                    ))}
+                  </div>
+                </Card>
+                <Card style={{ padding:14 }}>
+                  <div style={{ fontSize:10,fontWeight:700,color:C.muted,letterSpacing:.8,marginBottom:8 }}>TOOTH NUMBERS</div>
+                  <input value={teeth} onChange={e=>setTeeth(e.target.value)} placeholder="e.g. 8, 9 or 30"
+                    style={{ width:"100%",padding:"7px 10px",borderRadius:5,border:`1px solid ${C.border}`,background:C.surface2,color:C.ink,fontSize:12,fontFamily:C.font,outline:"none",boxSizing:"border-box" }} />
+                </Card>
+                <Card style={{ padding:14 }}>
+                  <div style={{ fontSize:10,fontWeight:700,color:C.muted,letterSpacing:.8,marginBottom:8 }}>NOTES</div>
+                  <textarea value={note} onChange={e=>setNote(e.target.value)} rows={3} placeholder="Shade, design notes, special instructions…"
+                    style={{ width:"100%",padding:"7px 10px",borderRadius:5,border:`1px solid ${C.border}`,background:C.surface2,color:C.ink,fontSize:12,fontFamily:C.sans,outline:"none",resize:"none",boxSizing:"border-box" }} />
+                </Card>
+                <Btn onClick={send} disabled={!canSend} style={{ padding:"13px 20px",fontSize:13,borderRadius:8 }}>
+                  Send to {sys.name} →
+                </Btn>
+                {!canSend&&<div style={{ fontSize:11,color:C.muted,textAlign:"center" }}>{reqTotal-reqDone} required file{reqTotal-reqDone!==1?"s":""} remaining</div>}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── STATUS ── */}
+        {step==="status"&&job&&sys&&(
+          <div style={{ maxWidth:520,margin:"0 auto" }}>
+            <Card style={{ padding:28 }}>
+              <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24 }}>
+                <div style={{ display:"flex",gap:12,alignItems:"center" }}>
+                  <span style={{ fontSize:22,color:sys.color }}>{sys.icon}</span>
+                  <div>
+                    <div style={{ fontSize:14,fontWeight:700 }}>Sent to {sys.name}</div>
+                    <div style={{ fontSize:10,fontFamily:C.font,color:C.muted }}>{job.id}</div>
+                  </div>
+                </div>
+                <Tag label={job.status.toUpperCase()} color={job.status==="ready"?C.green:C.warn} dim={job.status==="ready"?"rgba(34,197,94,.1)":"rgba(245,158,11,.1)"} />
+              </div>
+              {/* Progress bar */}
+              <div style={{ marginBottom:24 }}>
+                <div style={{ display:"flex",justifyContent:"space-between",marginBottom:6 }}>
+                  <span style={{ fontSize:12,color:C.muted }}>{job.status==="uploading"?"Uploading files…":job.status==="processing"?`Processing in ${sys.name}…`:"Design ready for review"}</span>
+                  <span style={{ fontSize:12,fontFamily:C.font,fontWeight:700 }}>{job.progress}%</span>
+                </div>
+                <div style={{ height:6,background:C.surface2,borderRadius:3,overflow:"hidden" }}>
+                  <div style={{ height:"100%",borderRadius:3,background:job.status==="ready"?C.teal:sys.color,width:`${job.progress}%`,transition:"width .4s ease" }} />
+                </div>
+              </div>
+              {/* Case summary */}
+              <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,padding:14,borderRadius:7,background:C.surface2,marginBottom:20 }}>
+                {[["System",sys.name],["Mode",MODES[mode].label],["Restoration",restType],["Teeth",teeth||"—"],["Files sent",`${uploaded} files`],["Started",job.startedAt.toLocaleTimeString()]].map(([k,v])=>(
+                  <div key={k}><div style={{ fontSize:9,color:C.light,letterSpacing:1,marginBottom:2 }}>{k.toUpperCase()}</div><div style={{ fontSize:12,fontWeight:600 }}>{v}</div></div>
+                ))}
+              </div>
+              {job.status==="ready"?(
+                <div style={{ display:"flex",flexDirection:"column",gap:8 }}>
+                  <Btn onClick={()=>alert("Importing design to Restora 3D viewer…")} style={{ padding:"12px 18px",fontSize:13 }}>Import design → Restora</Btn>
+                  <Btn onClick={()=>alert(`Opening in ${sys.name} partner system…`)} variant="secondary" style={{ padding:"11px 18px" }}>Open in partner system ↗</Btn>
+                  <Btn onClick={reset} variant="ghost" style={{ padding:"11px 18px" }}>↺ New case</Btn>
+                </div>
+              ):(
+                <div style={{ textAlign:"center",fontSize:12,color:C.muted }}>Waiting for {sys.name} to process…</div>
+              )}
+            </Card>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// OTHER SCREENS  (functional stubs with real interactions)
+// ══════════════════════════════════════════════════════════════════
+function Dashboard({ navigate }) {
+  const cases=[{id:1,name:"Sarah Johnson",teeth:"#8,#9",type:"Cosmetic Anterior",status:"Design ready",statusColor:C.teal},{id:2,name:"Michael Chen",teeth:"#3",type:"Restorative Posterior",status:"Files needed",statusColor:C.warn},{id:3,name:"Emma Davis",teeth:"#30",type:"Single Implant",status:"In progress",statusColor:C.blue}];
+  return (
+    <div style={{ flex:1,overflow:"auto",padding:"28px",background:C.bg,color:C.ink,fontFamily:C.sans }}>
+      <div style={{ fontSize:22,fontWeight:700,letterSpacing:"-.03em",marginBottom:6 }}>Dashboard</div>
+      <div style={{ fontSize:13,color:C.muted,marginBottom:28 }}>Active cases · April 2026</div>
+      {/* Quick actions */}
+      <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:28 }}>
+        {[{label:"New AI Design",icon:"◈",action:"ai-design-guide",color:C.teal},{label:"Design Systems Bridge",icon:"✦",action:"design-bridge",color:C.purple},{label:"Export Hub",icon:"↑",action:"export",color:C.amber}].map(a=>(
+          <button key={a.label} onClick={()=>navigate(a.action)} style={{ padding:18,borderRadius:10,border:`1px solid ${a.color+"40"}`,background:a.color+"08",cursor:"pointer",fontFamily:C.sans,textAlign:"left",transition:"all .15s" }}
+            onMouseEnter={e=>{e.currentTarget.style.background=a.color+"15";}}
+            onMouseLeave={e=>{e.currentTarget.style.background=a.color+"08";}}>
+            <span style={{ fontSize:20,color:a.color,display:"block",marginBottom:10 }}>{a.icon}</span>
+            <div style={{ fontSize:13,fontWeight:700,color:C.ink }}>{a.label}</div>
+          </button>
+        ))}
+      </div>
+      {/* Cases */}
+      <Card>
+        <div style={{ padding:"12px 16px",borderBottom:`1px solid ${C.border}`,fontSize:10,fontFamily:C.font,color:C.muted,letterSpacing:2 }}>ACTIVE CASES</div>
+        {cases.map((c,i)=>(
+          <div key={c.id} style={{ padding:"14px 16px",borderBottom:i<cases.length-1?`1px solid ${C.borderSoft}`:"none",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer" }}
+            onClick={()=>navigate("ai-design-guide")}
+            onMouseEnter={e=>e.currentTarget.style.background=C.surface2}
+            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            <div style={{ display:"flex",gap:14,alignItems:"center" }}>
+              <div style={{ width:36,height:36,borderRadius:8,background:`${C.teal}15`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:C.teal }}>
+                {c.name.split(" ").map(n=>n[0]).join("")}
+              </div>
+              <div>
+                <div style={{ fontSize:13,fontWeight:600 }}>{c.name}</div>
+                <div style={{ fontSize:11,color:C.muted }}>{c.type} · Teeth {c.teeth}</div>
+              </div>
+            </div>
+            <Tag label={c.status} color={c.statusColor} dim={c.statusColor+"15"} />
+          </div>
+        ))}
+      </Card>
+    </div>
+  );
+}
+
+function RestorationCAD({ navigate }) {
+  const [restType,setRest]=useState("crown"), [material,setMat]=useState("Pressed lithium disilicate"), [shade,setShade]=useState("A1"), [sent,setSent]=useState(false);
+  return (
+    <div style={{ flex:1,overflow:"auto",padding:28,background:C.bg,color:C.ink,fontFamily:C.sans }}>
+      <div style={{ fontSize:20,fontWeight:700,marginBottom:20 }}>Restoration CAD</div>
+      <div style={{ display:"grid",gridTemplateColumns:"1fr 300px",gap:20 }}>
+        {/* Viewport */}
+        <Card style={{ padding:0,overflow:"hidden",minHeight:420 }}>
+          <div style={{ padding:"10px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",gap:8,alignItems:"center" }}>
+            <Tag label="3D VIEWPORT" color={C.teal} dim={C.tealDim} />
+            {["Front","Top","3/4","Occlusal"].map(v=><button key={v} onClick={()=>{}} style={{ padding:"3px 8px",borderRadius:4,fontSize:10,border:`1px solid ${C.border}`,background:"transparent",color:C.muted,cursor:"pointer",fontFamily:C.sans }}>{v}</button>)}
+          </div>
+          <div style={{ height:380,display:"flex",alignItems:"center",justifyContent:"center",background:"#06090e",position:"relative" }}>
+            <div style={{ textAlign:"center" }}>
+              <div style={{ width:80,height:100,margin:"0 auto 16px",borderRadius:"40% 40% 35% 35%",background:"linear-gradient(160deg,#f5f0e8,#e8e0d0)",boxShadow:"0 8px 32px rgba(0,0,0,.5),inset 0 2px 8px rgba(255,255,255,.3)" }} />
+              <div style={{ fontSize:11,color:C.muted }}>Crown form — {restType}</div>
+              <div style={{ fontSize:10,color:C.light,marginTop:4 }}>{material} · {shade}</div>
+            </div>
+            <div style={{ position:"absolute",bottom:12,right:12,display:"flex",gap:6 }}>
+              {["Margin","Contacts","Occlusion"].map(t=><button key={t} onClick={()=>{}} style={{ padding:"4px 9px",borderRadius:4,fontSize:10,border:`1px solid ${C.border}`,background:C.surface,color:C.muted,cursor:"pointer",fontFamily:C.sans }}>{t}</button>)}
+            </div>
+          </div>
+        </Card>
+        {/* Controls */}
+        <div style={{ display:"flex",flexDirection:"column",gap:12 }}>
+          <Card style={{ padding:14 }}>
+            <SectionHead label="Restoration Type" />
+            {["crown","veneer","onlay","inlay","bridge"].map(r=>(
+              <button key={r} onClick={()=>setRest(r)} style={{ display:"block",width:"100%",padding:"8px 12px",borderRadius:5,border:`1px solid ${restType===r?C.teal:C.border}`,background:restType===r?C.tealDim:"transparent",color:restType===r?C.teal:C.muted,cursor:"pointer",fontFamily:C.sans,textAlign:"left",fontSize:12,marginBottom:5,textTransform:"capitalize" }}>{r}</button>
+            ))}
+          </Card>
+          <Card style={{ padding:14 }}>
+            <SectionHead label="Material" />
+            <select value={material} onChange={e=>setMat(e.target.value)} style={{ width:"100%",padding:"7px 10px",borderRadius:5,border:`1px solid ${C.border}`,background:C.surface2,color:C.ink,fontSize:12,fontFamily:C.sans,outline:"none" }}>
+              {["Pressed lithium disilicate","Milled lithium disilicate","Zirconia HT","Cast gold"].map(m=><option key={m}>{m}</option>)}
+            </select>
+          </Card>
+          <Card style={{ padding:14 }}>
+            <SectionHead label="Shade" />
+            <div style={{ display:"flex",flexWrap:"wrap",gap:6 }}>
+              {["BL1","BL2","A1","A2","A3","B1"].map(s=>(
+                <button key={s} onClick={()=>setShade(s)} style={{ padding:"5px 10px",borderRadius:4,fontSize:11,border:`1px solid ${shade===s?C.teal:C.border}`,background:shade===s?C.tealDim:"transparent",color:shade===s?C.teal:C.muted,cursor:"pointer",fontFamily:C.sans }}>{s}</button>
+              ))}
+            </div>
+          </Card>
+          {sent?(
+            <div style={{ padding:14,borderRadius:8,background:"rgba(34,197,94,.08)",border:"1px solid rgba(34,197,94,.2)",textAlign:"center" }}>
+              <div style={{ fontSize:18,marginBottom:6 }}>✓</div>
+              <div style={{ fontSize:12,fontWeight:700,color:C.green }}>Sent to Export Hub</div>
+            </div>
+          ):(
+            <Btn onClick={()=>setSent(true)} style={{ padding:"12px 18px" }}>Approve & Send →</Btn>
+          )}
+          <Btn onClick={()=>navigate("design-bridge")} variant="secondary" style={{ padding:"10px 18px",fontSize:11 }}>Open Design Bridge ↗</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SmileSimScreen({ navigate }) {
+  const [shade,setShade]=useState("A1"), [trans,setTrans]=useState(40), [spec,setSpec]=useState(60), [approved,setApproved]=useState(false);
+  return (
+    <div style={{ flex:1,overflow:"auto",padding:28,background:C.bg,color:C.ink,fontFamily:C.sans }}>
+      <div style={{ fontSize:20,fontWeight:700,marginBottom:20 }}>Smile Simulation</div>
+      <div style={{ display:"grid",gridTemplateColumns:"1fr 280px",gap:20 }}>
+        <Card style={{ padding:0,overflow:"hidden" }}>
+          <div style={{ padding:"10px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",gap:8 }}>
+            {["Split","Before","After","Patient View"].map(m=><button key={m} style={{ padding:"3px 10px",borderRadius:4,fontSize:10,border:`1px solid ${C.border}`,background:m==="Split"?C.tealDim:"transparent",color:m==="Split"?C.teal:C.muted,cursor:"pointer",fontFamily:C.sans }}>{m}</button>)}
+          </div>
+          <div style={{ height:380,background:"#0e1117",display:"flex",alignItems:"center",justifyContent:"center",gap:1,position:"relative" }}>
+            <div style={{ width:"50%",height:"100%",background:"#111",display:"flex",alignItems:"center",justifyContent:"center" }}>
+              <div style={{ textAlign:"center" }}>
+                <div style={{ display:"flex",gap:3,marginBottom:6 }}>
+                  {[0,1,2,3].map(i=><div key={i} style={{ width:i===0||i===3?24:20,height:i===0||i===3?32:28,borderRadius:"40% 40% 30% 30%",background:"#c8b89a",boxShadow:"inset 0 2px 4px rgba(0,0,0,.3)" }} />)}
+                </div>
+                <div style={{ fontSize:10,color:"#666" }}>Before</div>
+              </div>
+            </div>
+            <div style={{ width:2,height:"100%",background:C.teal,cursor:"ew-resize" }} />
+            <div style={{ width:"50%",height:"100%",background:"#0d1117",display:"flex",alignItems:"center",justifyContent:"center" }}>
+              <div style={{ textAlign:"center" }}>
+                <div style={{ display:"flex",gap:3,marginBottom:6 }}>
+                  {[0,1,2,3].map(i=><div key={i} style={{ width:i===0||i===3?24:20,height:i===0||i===3?32:28,borderRadius:"40% 40% 30% 30%",background:shade==="A1"?"#f0e8d8":shade==="BL1"?"#f8f5f0":"#e8dcc8",boxShadow:`0 4px 12px rgba(0,0,0,.4),inset 0 2px 6px rgba(255,255,255,${spec/200})` }} />)}
+                </div>
+                <div style={{ fontSize:10,color:C.muted }}>After · {shade}</div>
+              </div>
+            </div>
+          </div>
+        </Card>
+        <div style={{ display:"flex",flexDirection:"column",gap:10 }}>
+          <Card style={{ padding:14 }}>
+            <SectionHead label="Shade" />
+            <div style={{ display:"flex",flexWrap:"wrap",gap:5 }}>
+              {["BL1","BL2","A1","A2","A3","B1","B2"].map(s=>(
+                <button key={s} onClick={()=>setShade(s)} style={{ padding:"4px 9px",borderRadius:4,fontSize:11,border:`1px solid ${shade===s?C.teal:C.border}`,background:shade===s?C.tealDim:"transparent",color:shade===s?C.teal:C.muted,cursor:"pointer",fontFamily:C.sans }}>{s}</button>
+              ))}
+            </div>
+          </Card>
+          <Card style={{ padding:14 }}>
+            <SectionHead label="Optical Properties" />
+            {[["Translucency",trans,setTrans],["Specularity",spec,setSpec]].map(([l,v,sv])=>(
+              <div key={l} style={{ marginBottom:12 }}>
+                <div style={{ display:"flex",justifyContent:"space-between",marginBottom:4 }}>
+                  <span style={{ fontSize:11,color:C.muted }}>{l}</span>
+                  <span style={{ fontSize:11,fontFamily:C.font,color:C.teal }}>{v}%</span>
+                </div>
+                <input type="range" min={0} max={100} value={v} onChange={e=>sv(+e.target.value)} style={{ width:"100%",accentColor:C.teal }} />
+              </div>
+            ))}
+          </Card>
+          {approved?(
+            <div style={{ padding:14,borderRadius:8,background:"rgba(34,197,94,.08)",border:"1px solid rgba(34,197,94,.2)",textAlign:"center" }}>
+              <div style={{ fontSize:13,fontWeight:700,color:C.green }}>✓ Patient approved</div>
+              <div style={{ fontSize:11,color:C.muted,marginTop:4 }}>Signed · {new Date().toLocaleDateString()}</div>
+            </div>
+          ):(
+            <>
+              <Btn onClick={()=>setApproved(true)} style={{ padding:"12px 18px" }}>Patient Approve ✓</Btn>
+              <Btn onClick={()=>alert("SMS link sent to patient")} variant="secondary" style={{ padding:"10px 18px",fontSize:11 }}>Send to Patient ↗</Btn>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ImplantPlanScreen({ navigate }) {
+  const [site,setSite]=useState("#30"), [system,setSystem]=useState("Neoss ProActive 3.5"), [loaded,setLoaded]=useState(false);
+  const [torque,setTorque]=useState(35);
+  return (
+    <div style={{ flex:1,overflow:"auto",padding:28,background:C.bg,color:C.ink,fontFamily:C.sans }}>
+      <div style={{ fontSize:20,fontWeight:700,marginBottom:20 }}>Implant Planning</div>
+      <div style={{ display:"grid",gridTemplateColumns:"1fr 300px",gap:20 }}>
+        <Card style={{ padding:0,overflow:"hidden" }}>
+          <div style={{ padding:"10px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",gap:8,alignItems:"center" }}>
+            <Tag label="ARCH VIEW" color={C.amber} dim={C.amberDim} />
+            <select value={site} onChange={e=>setSite(e.target.value)} style={{ padding:"4px 8px",borderRadius:4,border:`1px solid ${C.border}`,background:C.surface2,color:C.ink,fontSize:11,fontFamily:C.sans,outline:"none" }}>
+              {["#3","#14","#19","#30"].map(s=><option key={s}>{s}</option>)}
+            </select>
+          </div>
+          <div style={{ height:340,background:"#06090e",display:"flex",alignItems:"center",justifyContent:"center",position:"relative" }}>
+            <div style={{ textAlign:"center" }}>
+              <div style={{ width:120,height:30,borderRadius:"50%",border:`2px solid ${C.teal}40`,margin:"0 auto 20px",display:"flex",alignItems:"center",gap:6,justifyContent:"center" }}>
+                {[...Array(8)].map((_,i)=>(
+                  <div key={i} style={{ width:i===4?16:i===0||i===7?10:12,height:i===0||i===7?18:20,borderRadius:"40% 40% 30% 30%",background:i===4?C.teal+"40":"#444",border:i===4?`1px solid ${C.teal}`:"none" }} />
+                ))}
+              </div>
+              <div style={{ width:4,height:60,background:C.teal,margin:"0 auto",borderRadius:2 }} />
+              <div style={{ width:12,height:12,borderRadius:"50%",background:C.amber,margin:"4px auto",boxShadow:`0 0 8px ${C.amber}` }} />
+              <div style={{ fontSize:11,color:C.muted,marginTop:12 }}>Site {site} · {system}</div>
+            </div>
+          </div>
+          {/* Safety checks */}
+          <div style={{ padding:14,borderTop:`1px solid ${C.border}` }}>
+            <SectionHead label="Safety Checks" />
+            {[["IAN clearance",true,"4.2mm ≥ 2mm"],["Bone height",true,"12mm adequate"],["Adjacent gap",true,"2.1mm ≥ 1.5mm"],["Primary stability",torque>=35,`${torque} Ncm`]].map(([l,pass,v])=>(
+              <div key={l} style={{ display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:`1px solid ${C.borderSoft}`,alignItems:"center" }}>
+                <span style={{ fontSize:11,color:C.muted }}>{l}</span>
+                <div style={{ display:"flex",gap:6,alignItems:"center" }}>
+                  <span style={{ fontSize:10,fontFamily:C.font,color:C.muted }}>{v}</span>
+                  <span style={{ fontSize:10,color:pass?C.green:C.warn }}>{pass?"✓":"⚠"}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+        <div style={{ display:"flex",flexDirection:"column",gap:12 }}>
+          <Card style={{ padding:14 }}>
+            <SectionHead label="Implant System" />
+            <select value={system} onChange={e=>setSystem(e.target.value)} style={{ width:"100%",padding:"7px 10px",borderRadius:5,border:`1px solid ${C.border}`,background:C.surface2,color:C.ink,fontSize:12,fontFamily:C.sans,outline:"none",marginBottom:8 }}>
+              {["Neoss ProActive 3.5","Neoss ProActive 4.0","Straumann BL 4.1","Nobel Biocare 4.3"].map(s=><option key={s}>{s}</option>)}
+            </select>
+            <div style={{ fontSize:11,color:C.muted,lineHeight:1.6 }}>
+              <div>Platform: SP · Internal trilobe</div>
+              <div>Material: Grade 4 Ti · ProActive</div>
+              <div>Max speed: 20 RPM</div>
+            </div>
+          </Card>
+          <Card style={{ padding:14 }}>
+            <SectionHead label="Insertion Torque" />
+            <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:6 }}>
+              <input type="range" min={10} max={60} value={torque} onChange={e=>setTorque(+e.target.value)} style={{ flex:1,accentColor:torque>=35?C.green:C.warn }} />
+              <span style={{ fontSize:12,fontFamily:C.font,color:torque>=35?C.green:C.warn,minWidth:50 }}>{torque} Ncm</span>
+            </div>
+            <div style={{ fontSize:10,color:torque>=35?C.green:C.warn }}>{torque>=35?"✓ Immediate load threshold met":"⚠ Below 35 Ncm — stage protocol"}</div>
+          </Card>
+          <Btn onClick={()=>navigate("export")} style={{ padding:"12px 18px" }}>Generate Surgical Guide →</Btn>
+          <Btn onClick={()=>navigate("full-arch")} variant="secondary" style={{ padding:"10px 18px",fontSize:11 }}>Full Arch Planning</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FullArchScreen() {
+  const [type,setType]=useState("mono"), [units,setUnits]=useState(12), [sent,setSent]=useState(false);
+  const types=[{id:"mono",label:"Monolithic Zirconia",sub:"FP1 — one-piece milled"},{id:"fp3",label:"Metal-Resin FP3",sub:"PMMA + Ti bar"},{id:"bar",label:"Titanium Bar + Zirconia",sub:"iBar — gold standard"}];
+  return (
+    <div style={{ flex:1,overflow:"auto",padding:28,background:C.bg,color:C.ink,fontFamily:C.sans }}>
+      <div style={{ fontSize:20,fontWeight:700,marginBottom:20 }}>Full Arch Design</div>
+      <div style={{ display:"grid",gridTemplateColumns:"1fr 280px",gap:20 }}>
+        <Card style={{ padding:20 }}>
+          <SectionHead label="Prosthesis Type" />
+          {types.map(t=>(
+            <div key={t.id} onClick={()=>setType(t.id)} style={{ padding:14,borderRadius:7,border:`1px solid ${type===t.id?C.teal:C.border}`,background:type===t.id?C.tealDim:"transparent",marginBottom:8,cursor:"pointer",transition:"all .15s" }}>
+              <div style={{ fontSize:13,fontWeight:600,color:type===t.id?C.teal:C.ink }}>{t.label}</div>
+              <div style={{ fontSize:11,color:C.muted,marginTop:2 }}>{t.sub}</div>
+            </div>
+          ))}
+          <div style={{ marginTop:20 }}>
+            <SectionHead label="Prosthetic Space Breakdown" />
+            {[["Tooth height","11mm",C.teal],["Pink porcelain zone","5.5mm","#e88080"],["Ti bar","3.5mm",C.gold],["MUA + screw","4mm",C.muted]].map(([l,v,c])=>(
+              <div key={l} style={{ display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${C.borderSoft}`,alignItems:"center" }}>
+                <div style={{ display:"flex",gap:8,alignItems:"center" }}>
+                  <div style={{ width:10,height:10,borderRadius:2,background:c,flexShrink:0 }} />
+                  <span style={{ fontSize:12,color:C.muted }}>{l}</span>
+                </div>
+                <span style={{ fontSize:12,fontFamily:C.font,color:C.ink }}>{v}</span>
+              </div>
+            ))}
+            <div style={{ display:"flex",justifyContent:"space-between",padding:"9px 0",alignItems:"center" }}>
+              <span style={{ fontSize:12,fontWeight:700 }}>Total</span>
+              <span style={{ fontSize:12,fontFamily:C.font,fontWeight:700,color:C.teal }}>24mm</span>
+            </div>
+          </div>
+        </Card>
+        <div style={{ display:"flex",flexDirection:"column",gap:12 }}>
+          <Card style={{ padding:14 }}>
+            <SectionHead label="Units" />
+            <div style={{ display:"flex",alignItems:"center",gap:10 }}>
+              <input type="range" min={8} max={16} value={units} onChange={e=>setUnits(+e.target.value)} style={{ flex:1,accentColor:C.teal }} />
+              <span style={{ fontSize:12,fontFamily:C.font,color:C.teal,minWidth:30 }}>{units}</span>
+            </div>
+          </Card>
+          <Card style={{ padding:14 }}>
+            <SectionHead label="Features" />
+            {[["Platform switching",true],["Zero tissue push",true],["Screw-retained",true],["Pink porcelain zone",type==="fp3"]].map(([l,v])=>(
+              <div key={l} style={{ display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${C.borderSoft}`,alignItems:"center" }}>
+                <span style={{ fontSize:11,color:C.muted }}>{l}</span>
+                <span style={{ fontSize:11,color:v?C.green:C.light }}>{v?"✓":"—"}</span>
+              </div>
+            ))}
+          </Card>
+          {sent?(
+            <div style={{ padding:14,borderRadius:8,background:"rgba(34,197,94,.08)",border:"1px solid rgba(34,197,94,.2)",textAlign:"center" }}>
+              <div style={{ fontSize:13,fontWeight:700,color:C.green }}>✓ Sent to Lab CAD</div>
+            </div>
+          ):(
+            <Btn onClick={()=>setSent(true)} style={{ padding:"12px 18px" }}>Send to Lab CAD →</Btn>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ExportScreen() {
+  const files=[{id:"f1",name:"Upper arch scan.stl",type:"scan",size:"8.4 MB"},{id:"f2",name:"Lower arch scan.stl",type:"scan",size:"7.1 MB"},{id:"f3",name:"Crown design #8-9.stl",type:"design",size:"2.3 MB"},{id:"f4",name:"Surgical guide.stl",type:"design",size:"4.8 MB"},{id:"f5",name:"Treatment plan.pdf",type:"document",size:"0.4 MB"}];
+  const dests=[{id:"cloud",label:"Restora Cloud",icon:"☁️",color:C.teal},{id:"lab",label:"Secure Lab Send",icon:"🏥",color:C.blue},{id:"mill",label:"Mill Connect",icon:"◈",color:C.amber},{id:"print",label:"Printer",icon:"🖨",color:C.purple}];
+  const [selF,setSelF]=useState(new Set(["f1","f2","f3"]));
+  const [selD,setSelD]=useState(new Set(["cloud"]));
+  const [sent,setSent]=useState(false);
+  const [note,setNote]=useState("");
+  const typeColor={scan:C.blue,design:C.teal,document:C.muted};
+  return (
+    <div style={{ flex:1,overflow:"auto",padding:28,background:C.bg,color:C.ink,fontFamily:C.sans }}>
+      <div style={{ fontSize:20,fontWeight:700,marginBottom:20 }}>Export Hub</div>
+      <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 280px",gap:16 }}>
+        {/* Files */}
+        <Card style={{ padding:0,overflow:"hidden" }}>
+          <div style={{ padding:"10px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center" }}>
+            <span style={{ fontSize:9,fontFamily:C.font,color:C.muted,letterSpacing:2 }}>CASE ASSETS</span>
+            <button onClick={()=>setSelF(new Set(files.map(f=>f.id)))} style={{ fontSize:10,color:C.teal,background:"none",border:"none",cursor:"pointer",fontFamily:C.sans }}>Select all</button>
+          </div>
+          {files.map(f=>(
+            <div key={f.id} onClick={()=>setSelF(p=>{const n=new Set(p);n.has(f.id)?n.delete(f.id):n.add(f.id);return n;})}
+              style={{ padding:"11px 14px",borderBottom:`1px solid ${C.borderSoft}`,display:"flex",gap:10,alignItems:"center",cursor:"pointer",background:selF.has(f.id)?C.tealDim:"transparent",transition:"all .15s" }}>
+              <div style={{ width:18,height:18,borderRadius:4,border:`1.5px solid ${selF.has(f.id)?C.teal:C.border}`,background:selF.has(f.id)?C.teal:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0 }}>
+                {selF.has(f.id)&&<span style={{ fontSize:10,color:"white" }}>✓</span>}
+              </div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:12,fontWeight:500,color:C.ink }}>{f.name}</div>
+                <div style={{ fontSize:10,color:C.muted }}>{f.size}</div>
+              </div>
+              <div style={{ width:8,height:8,borderRadius:"50%",background:typeColor[f.type]||C.muted }} />
+            </div>
+          ))}
+        </Card>
+        {/* Destinations */}
+        <Card style={{ padding:14 }}>
+          <SectionHead label="Destinations" />
+          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16 }}>
+            {dests.map(d=>(
+              <button key={d.id} onClick={()=>setSelD(p=>{const n=new Set(p);n.has(d.id)?n.delete(d.id):n.add(d.id);return n;})}
+                style={{ padding:12,borderRadius:7,border:`1px solid ${selD.has(d.id)?d.color+"60":C.border}`,background:selD.has(d.id)?d.color+"10":"transparent",cursor:"pointer",fontFamily:C.sans,textAlign:"left",transition:"all .15s" }}>
+                <div style={{ fontSize:16,marginBottom:6 }}>{d.icon}</div>
+                <div style={{ fontSize:11,fontWeight:600,color:selD.has(d.id)?d.color:C.ink }}>{d.label}</div>
+              </button>
+            ))}
+          </div>
+          <div style={{ padding:12,borderRadius:7,background:"rgba(34,197,94,.06)",border:"1px solid rgba(34,197,94,.15)",marginBottom:14 }}>
+            <div style={{ fontSize:10,fontWeight:700,color:C.green,marginBottom:4 }}>HIPAA · AES-256 · BAA</div>
+            <div style={{ fontSize:10,color:C.muted }}>All transfers encrypted end-to-end</div>
+          </div>
+          <textarea value={note} onChange={e=>setNote(e.target.value)} rows={3} placeholder="Lab note…"
+            style={{ width:"100%",padding:"8px 10px",borderRadius:5,border:`1px solid ${C.border}`,background:C.surface2,color:C.ink,fontSize:12,fontFamily:C.sans,outline:"none",resize:"none",boxSizing:"border-box" }} />
+        </Card>
+        {/* Send */}
+        <div style={{ display:"flex",flexDirection:"column",gap:12 }}>
+          <Card style={{ padding:14 }}>
+            <div style={{ fontSize:11,color:C.muted,marginBottom:8 }}>Selected: <strong style={{ color:C.ink }}>{selF.size} files</strong></div>
+            <div style={{ fontSize:11,color:C.muted,marginBottom:14 }}>Destinations: <strong style={{ color:C.ink }}>{selD.size}</strong></div>
+            {sent?(
+              <div style={{ padding:14,borderRadius:7,background:"rgba(34,197,94,.08)",border:"1px solid rgba(34,197,94,.2)",textAlign:"center" }}>
+                <div style={{ fontSize:20,marginBottom:6 }}>✓</div>
+                <div style={{ fontSize:12,fontWeight:700,color:C.green }}>Sent to {selD.size} destination{selD.size!==1?"s":""}</div>
+                <div style={{ fontSize:10,color:C.muted,marginTop:4 }}>{new Date().toLocaleTimeString()}</div>
+              </div>
+            ):(
+              <Btn onClick={()=>setSent(true)} disabled={selF.size===0||selD.size===0} style={{ width:"100%",padding:"13px",fontSize:13 }}>
+                Send {selF.size} files →
+              </Btn>
+            )}
+            {sent&&<Btn onClick={()=>setSent(false)} variant="ghost" style={{ marginTop:6,padding:"8px",fontSize:11 }}>Send again</Btn>}
+          </Card>
+          <Card style={{ padding:14 }}>
+            <SectionHead label="Export Options" />
+            {[["STL format","Binary"],["Coordinate","Z-up"],["Scale","1:1"]].map(([l,v])=>(
+              <div key={l} style={{ display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${C.borderSoft}`,fontSize:11 }}>
+                <span style={{ color:C.muted }}>{l}</span>
+                <span style={{ color:C.ink,fontFamily:C.font }}>{v}</span>
+              </div>
+            ))}
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ToothLibScreen() {
+  const [sel,setSel]=useState(null);
+  const teeth=[{n:8,name:"Max Central Incisor",L:"9-12mm",W:"8-9mm",root:"14-17mm"},{n:9,name:"Max Central Incisor",L:"9-12mm",W:"8-9mm",root:"14-17mm"},{n:10,name:"Max Lateral Incisor",L:"7-10mm",W:"6-7mm",root:"13-15mm"},{n:6,name:"Max Canine",L:"10-12mm",W:"7-8mm",root:"17-20mm"},{n:3,name:"Max 1st Molar",L:"6-8mm",W:"10-11mm",root:"20-24mm"}];
+  return (
+    <div style={{ flex:1,overflow:"auto",padding:28,background:C.bg,color:C.ink,fontFamily:C.sans }}>
+      <div style={{ fontSize:20,fontWeight:700,marginBottom:20 }}>Tooth Library</div>
+      <div style={{ display:"grid",gridTemplateColumns:"1fr 320px",gap:20 }}>
+        <div style={{ display:"flex",flexWrap:"wrap",gap:10,alignContent:"start" }}>
+          {teeth.map(t=>(
+            <button key={t.n} onClick={()=>setSel(t)} style={{ padding:"14px 18px",borderRadius:8,border:`1px solid ${sel?.n===t.n?C.teal:C.border}`,background:sel?.n===t.n?C.tealDim:C.surface,cursor:"pointer",fontFamily:C.sans,textAlign:"left",minWidth:160,transition:"all .15s" }}>
+              <div style={{ fontSize:18,fontWeight:700,color:sel?.n===t.n?C.teal:C.muted,marginBottom:6,fontFamily:C.font }}>#{t.n}</div>
+              <div style={{ fontSize:12,fontWeight:600,color:C.ink,marginBottom:3 }}>{t.name}</div>
+              <div style={{ fontSize:10,color:C.muted }}>L: {t.L} · W: {t.W}</div>
+            </button>
+          ))}
+        </div>
+        {sel?(
+          <Card style={{ padding:18 }}>
+            <div style={{ fontSize:15,fontWeight:700,marginBottom:4 }}>Tooth #{sel.n}</div>
+            <div style={{ fontSize:12,color:C.muted,marginBottom:18 }}>{sel.name}</div>
+            <div style={{ width:60,height:80,margin:"0 auto 20px",borderRadius:"40% 40% 35% 35%",background:"linear-gradient(160deg,#f0e8d8,#ddd0b8)",boxShadow:"0 4px 16px rgba(0,0,0,.4)" }} />
+            {[["Crown length",sel.L],["Crown width",sel.W],["Root length",sel.root],["Tissue biotype","Medium-flat"],["Ideal margin","Supragingival 0.5mm"]].map(([l,v])=>(
+              <div key={l} style={{ display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${C.borderSoft}`,fontSize:12 }}>
+                <span style={{ color:C.muted }}>{l}</span>
+                <span style={{ color:C.ink,fontFamily:C.font }}>{v}</span>
+              </div>
+            ))}
+          </Card>
+        ):(
+          <Card style={{ padding:28,textAlign:"center" }}>
+            <div style={{ fontSize:28,marginBottom:12 }}>⊡</div>
+            <div style={{ fontSize:13,color:C.muted }}>Select a tooth to view anatomy data</div>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// SIDEBAR + TITLEBAR
+// ══════════════════════════════════════════════════════════════════
+const SECTIONS = ["Start","Design","Planning","Delivery","Library"];
+
+function Sidebar({ screen, navigate }) {
+  const grouped = {};
+  Object.entries(SCREENS).forEach(([k,v])=>{ (grouped[v.section]=[...(grouped[v.section]||[]),{k,...v}]); });
+  return (
+    <div style={{ width:210,background:C.surface,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",flexShrink:0,overflow:"hidden" }}>
+      {/* Patient card */}
+      <div style={{ padding:"12px 12px 8px" }}>
+        <div style={{ padding:"10px 12px",background:C.surface2,borderRadius:8,border:`1px solid ${C.border}`,cursor:"pointer" }} onClick={()=>navigate("dashboard")}>
+          <div style={{ display:"flex",gap:8,alignItems:"center" }}>
+            <div style={{ width:32,height:32,borderRadius:"50%",background:`linear-gradient(135deg,${C.teal},#0080cc)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:"white",flexShrink:0 }}>SJ</div>
+            <div>
+              <div style={{ fontSize:12,fontWeight:700,color:C.ink }}>Sara Johnson</div>
+              <div style={{ fontSize:10,color:C.teal }}>Cosmetic Anterior · #8,#9</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {/* Nav */}
+      <div style={{ flex:1,overflow:"auto",padding:"0 8px 8px" }}>
+        {SECTIONS.map(section=>{
+          const items=grouped[section]||[];
+          return (
+            <div key={section} style={{ marginBottom:4 }}>
+              <div style={{ fontSize:9,fontFamily:C.font,color:C.light,letterSpacing:2,padding:"8px 8px 4px" }}>{section.toUpperCase()}</div>
+              {items.map(item=>{
+                const active=screen===item.k;
+                return (
+                  <button key={item.k} onClick={()=>navigate(item.k)}
+                    style={{ display:"flex",alignItems:"center",gap:8,width:"100%",padding:"8px 10px",borderRadius:6,border:"none",cursor:"pointer",fontFamily:C.sans,transition:"all .15s",background:active?C.tealDim:"transparent",marginBottom:1 }}>
+                    <span style={{ fontSize:13,color:active?C.teal:C.muted,flexShrink:0 }}>{item.icon}</span>
+                    <span style={{ fontSize:12,fontWeight:active?600:400,color:active?C.teal:C.muted,flex:1,textAlign:"left" }}>{item.label}</span>
+                    {item.badge&&<Tag label={item.badge} color={active?C.teal:C.muted} dim={active?C.tealDim:C.surface3} />}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TitleBar({ screen, navigate }) {
+  const def=SCREENS[screen]||{};
+  return (
+    <div style={{ height:44,display:"flex",alignItems:"center",padding:"0 16px",gap:12,background:C.surface,borderBottom:`1px solid ${C.border}`,flexShrink:0 }}>
+      <div style={{ display:"flex",gap:5 }}>
+        {["#ef4444","#f59e0b","#22c55e"].map((c,i)=><div key={i} style={{ width:12,height:12,borderRadius:"50%",background:c }} />)}
+      </div>
+      <div style={{ display:"flex",alignItems:"center",gap:8,marginLeft:8 }}>
+        <div style={{ width:24,height:24,borderRadius:7,background:`linear-gradient(135deg,${C.teal},#0080cc)`,display:"flex",alignItems:"center",justifyContent:"center" }}>
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M1.5 10.5C1.5 7 4 2 6 2C8 2 10.5 7 10.5 10.5" stroke="white" strokeWidth="1.8" strokeLinecap="round"/><circle cx="6" cy="10.5" r="1.2" fill="white"/></svg>
+        </div>
+        <span style={{ fontSize:14,color:C.ink,fontWeight:600 }}>Re<span style={{ color:C.teal }}>stora</span></span>
+      </div>
+      <span style={{ fontSize:12,color:C.light }}>›</span>
+      <span style={{ fontSize:12,fontWeight:600,color:C.ink }}>{def.label||screen}</span>
+      <div style={{ flex:1 }} />
+      <button onClick={()=>navigate("ai-design-guide")} style={{ display:"flex",alignItems:"center",gap:6,padding:"5px 12px",borderRadius:20,background:C.surface2,border:`1px solid ${C.border}`,fontSize:11,fontFamily:C.font,color:C.teal,cursor:"pointer",letterSpacing:.5 }}>⌘K AI</button>
+      <button style={{ padding:"5px 12px",borderRadius:20,border:`1px solid ${C.border}`,background:"transparent",color:C.muted,fontSize:11,cursor:"pointer",fontFamily:C.sans }}>Share ↗</button>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ROOT APP
+// ══════════════════════════════════════════════════════════════════
+export default function App() {
+  const [screen, setScreen] = useState("dashboard");
+  const navigate = (s) => setScreen(s);
+
+  const renderScreen = () => {
+    switch(screen) {
+      case "dashboard":       return <Dashboard navigate={navigate} />;
+      case "ai-design-guide": return <AIDesignGuide navigate={navigate} />;
+      case "design-bridge":   return <DesignBridge navigate={navigate} />;
+      case "restoration-cad": return <RestorationCAD navigate={navigate} />;
+      case "smile-sim":       return <SmileSimScreen navigate={navigate} />;
+      case "implant-plan":    return <ImplantPlanScreen navigate={navigate} />;
+      case "full-arch":       return <FullArchScreen />;
+      case "export":          return <ExportScreen />;
+      case "tooth-library":   return <ToothLibScreen />;
+      default: return (
+        <div style={{ flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,color:C.muted }}>
+          <div style={{ fontSize:28 }}>◈</div>
+          <div style={{ fontSize:14 }}>{SCREENS[screen]?.label || screen}</div>
+          <div style={{ fontSize:12 }}>Coming soon</div>
+        </div>
+      );
+    }
+  };
+
+  return (
+    <div style={{ width:"100vw",height:"100vh",display:"flex",flexDirection:"column",background:C.bg,color:C.ink,fontFamily:C.sans,overflow:"hidden" }}>
+      <TitleBar screen={screen} navigate={navigate} />
+      <div style={{ flex:1,display:"flex",overflow:"hidden" }}>
+        <Sidebar screen={screen} navigate={navigate} />
+        <main style={{ flex:1,display:"flex",flexDirection:"column",overflow:"hidden" }}>
+          {renderScreen()}
+        </main>
+      </div>
+    </div>
+  );
+}
