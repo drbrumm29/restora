@@ -965,8 +965,8 @@ function DesignBridge({ navigate, activePatient, clearPatient }) {
               </div>
               {job.status==="ready"?(
                 <div style={{ display:"flex",flexDirection:"column",gap:8 }}>
-                  <Btn onClick={()=>alert("Importing design to Restora 3D viewer…")} style={{ padding:"12px 18px",fontSize:13 }}>Import design → Restora</Btn>
-                  <Btn onClick={()=>alert(`Opening in ${sys.name} partner system…`)} variant="secondary" style={{ padding:"11px 18px" }}>Open in partner system ↗</Btn>
+                  <Btn onClick={()=>navigate("restoration-cad")} style={{ padding:"12px 18px",fontSize:13 }}>Import design → Restora</Btn>
+                  <Btn onClick={()=>navigate("export")} variant="secondary" style={{ padding:"11px 18px" }}>Open in partner system ↗</Btn>
                   <Btn onClick={reset} variant="ghost" style={{ padding:"11px 18px" }}>↺ New case</Btn>
                 </div>
               ):(
