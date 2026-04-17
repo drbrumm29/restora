@@ -211,6 +211,40 @@ export default function SmileCreator({ navigate, activePatient }) {
   const [showPhoto, setShowPhoto] = useState(true);
   const [showBefore, setShowBefore] = useState(false);
 
+  // Multi-photo design storage — each photo URL gets its own smile curve and
+  // tooth placement, because landmarks shift between retracted / smiling /
+  // labeled views. Switching photos preserves each design independently.
+  // { [photoUrl]: { smileCurve, teeth } }
+  const [designsByPhoto, setDesignsByPhoto] = useState({});
+
+  // Helper to switch photos while preserving the current design under the
+  // previous URL. If we've already designed something on the target photo,
+  // restore it; otherwise start a fresh design.
+  const switchPhoto = useCallback((newUrl) => {
+    if (newUrl === photoUrl) return;
+    setDesignsByPhoto(prev => {
+      const snapshot = { ...prev };
+      // Save current (only if meaningful to save — has curve or teeth)
+      if (photoUrl && (smileCurve || teeth.length > 0)) {
+        snapshot[photoUrl] = { smileCurve, teeth };
+      }
+      return snapshot;
+    });
+    // Load target's state if it exists, else reset
+    const target = designsByPhoto[newUrl];
+    if (target) {
+      setSmileCurve(target.smileCurve || null);
+      setTeeth(target.teeth || []);
+      setStep(target.teeth?.length > 0 ? 3 : (target.smileCurve ? 3 : 2));
+    } else {
+      setSmileCurve(null);
+      setTeeth([]);
+      setStep(2);
+    }
+    setSelectedTooth(null);
+    setPhotoUrl(newUrl);
+  }, [photoUrl, smileCurve, teeth, designsByPhoto]);
+
   // Export dialog state
   const [exportOpen, setExportOpen] = useState(false);
   const [exportStatus, setExportStatus] = useState(null);  // { kind, message }
@@ -1551,7 +1585,7 @@ export default function SmileCreator({ navigate, activePatient }) {
                   const isActive = photoUrl === url;
                   return (
                     <button key={p.url}
-                      onClick={() => setPhotoUrl(url)}
+                      onClick={() => switchPhoto(url)}
                       style={{
                         padding: 0,
                         borderRadius: 8,
@@ -1561,9 +1595,15 @@ export default function SmileCreator({ navigate, activePatient }) {
                         overflow: "hidden",
                         display: "flex",
                         flexDirection: "column",
+                        position: "relative",
                         transition: "all 0.12s",
                         fontFamily: C.sans,
                       }}>
+                      {/* Show a small dot if this photo has a saved design */}
+                      {designsByPhoto[url]?.teeth?.length > 0 && !isActive && (
+                        <div style={{ position: "absolute", top: 4, right: 4, width: 8, height: 8, borderRadius: 4, background: C.teal, boxShadow: `0 0 0 1.5px ${C.surface}` }}
+                          title="Design saved on this photo" />
+                      )}
                       <div style={{ width: "100%", height: 58, backgroundImage: `url(${url})`, backgroundSize: "cover", backgroundPosition: "center" }}/>
                       <div style={{ fontSize: 11, fontWeight: 600, color: isActive ? C.teal : C.ink, padding: "5px 2px" }}>{p.label}</div>
                     </button>
