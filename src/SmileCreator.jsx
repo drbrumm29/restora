@@ -10,6 +10,7 @@
 // └─────────────────────────────────────────────────────────────────┘
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import TOOTH_SILHOUETTES from "./tooth-silhouettes.json";
 
 const C = {
   bg:"#0d1b2e", surface:"#132338", surface2:"#1a2f48", surface3:"#213858",
@@ -96,6 +97,28 @@ function toothTypeForNumber(n) {
   if (dist === 2) return 'lateral';
   if (dist === 3) return 'canine';
   return 'premolar';
+}
+
+// Map Universal tooth number → library filename.
+// Library files 1..8 follow dental convention: 1=central incisor, 2=lateral,
+// 3=canine, 4=1st premolar, 5=2nd premolar, 6=1st molar, 7=2nd molar, 8=3rd molar.
+// For upper arch (#4-#13), distance from midline gives the file index.
+function libraryFileForNumber(n) {
+  const dist = n >= 9 ? n - 8 : 9 - n;  // 1..5 for #4-#13
+  return `${dist}.stl`;
+}
+
+// Resolve the polygon silhouette for a tooth. Looks up the library pack for
+// the given library id + tooth number. Falls back to a built-in generic
+// outline if the library isn't available (e.g. still-loading or a hand-built
+// shape pack without STL-derived silhouettes).
+function resolveOutline(libraryId, toothNum, toothType) {
+  const libSilhouettes = TOOTH_SILHOUETTES[libraryId];
+  if (libSilhouettes) {
+    const fileName = libraryFileForNumber(toothNum);
+    if (libSilhouettes[fileName]) return libSilhouettes[fileName];
+  }
+  return TOOTH_OUTLINES[toothType];
 }
 
 // Shade hex values (same as RestorationCAD)
@@ -485,8 +508,14 @@ export default function SmileCreator({ navigate, activePatient }) {
         ctx.translate(cPos.x, cPos.y);
         ctx.rotate(tooth.rotation);
 
-        // Draw tooth outline (polygon)
-        const outline = TOOTH_OUTLINES[tooth.type];
+        // Draw tooth outline (polygon) — library-specific when available
+        let outline = resolveOutline(library, tooth.num, tooth.type);
+        // Mirror horizontally for patient-LEFT teeth (#9-#13) so the mesial
+        // surface (toward midline) sits on the correct side. Library files
+        // are canonical for right-side; left-side needs X-flip.
+        if (tooth.num >= 9) {
+          outline = outline.map(([x, y]) => [-x, y]);
+        }
         const isSelected = selectedTooth === tooth.num;
         const shadeColor = SHADE_HEX[shade] || "#f5ead0";
 
@@ -571,7 +600,7 @@ export default function SmileCreator({ navigate, activePatient }) {
         ctx.restore();
       });
     }
-  }, [canvasDim, transform, smileCurve, teeth, selectedTooth, shade, showPhoto, showBefore, step, placementBuffer, pulseTick]);
+  }, [canvasDim, transform, smileCurve, teeth, selectedTooth, shade, showPhoto, showBefore, step, placementBuffer, pulseTick, library]);
 
   // ── Mouse/touch handlers ──────────────────────────────────────
   const getCanvasPoint = (e) => {
@@ -1087,14 +1116,20 @@ export default function SmileCreator({ navigate, activePatient }) {
                 <div style={{ fontSize: 11, color: C.muted, letterSpacing: 1, fontWeight: 600, marginBottom: 10, textTransform: "uppercase" }}>Tooth Shape</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   {[
-                    { id: "dannydesigner5", name: "Ovoid", subtitle: "Feminine", key: "ovoid" },
-                    { id: "dannydesigner4", name: "Square", subtitle: "Masculine", key: "square" },
-                    { id: "g01", name: "Balanced", subtitle: "Default", key: "balanced" },
-                    { id: "g02", name: "Natural", subtitle: "Varied", key: "natural" },
+                    { id: "dannydesigner5", name: "Ovoid", subtitle: "Feminine" },
+                    { id: "dannydesigner4", name: "Square", subtitle: "Masculine" },
+                    { id: "g01", name: "Balanced", subtitle: "Default" },
+                    { id: "g02", name: "Natural", subtitle: "Varied" },
                   ].map(lib => {
                     const isActive = library === lib.id;
-                    // Line-drawing preview of the tooth shape
-                    const shape = lib.key === 'ovoid' ? 'ovoid' : lib.key === 'square' ? 'square' : 'balanced';
+                    // Real extracted silhouette (central incisor = file 1.stl) previewed as SVG path
+                    const silhouette = TOOTH_SILHOUETTES[lib.id]?.["1.stl"];
+                    const svgPath = silhouette ? silhouette.map((p, i) => {
+                      // Scale the [-0.5,0.5] silhouette to 40x44 SVG, Y flipped (SVG Y down = tooth incisal up)
+                      const x = 20 + p[0] * 30;
+                      const y = 22 + p[1] * 36;
+                      return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)} ${y.toFixed(1)}`;
+                    }).join(' ') + ' Z' : null;
                     return (
                       <button key={lib.id}
                         onClick={() => setLibrary(lib.id)}
@@ -1112,9 +1147,15 @@ export default function SmileCreator({ navigate, activePatient }) {
                           fontFamily: C.sans,
                         }}>
                         <svg width="40" height="44" viewBox="0 0 40 44">
-                          {shape === 'ovoid' && <ellipse cx="20" cy="22" rx="13" ry="18" fill={isActive ? C.teal : 'rgba(192,212,234,0.45)'} />}
-                          {shape === 'square' && <rect x="6" y="4" width="28" height="36" rx="4" fill={isActive ? C.teal : 'rgba(192,212,234,0.45)'} />}
-                          {shape === 'balanced' && <path d="M 20 4 Q 32 4 33 18 Q 33 38 20 40 Q 7 38 7 18 Q 8 4 20 4 Z" fill={isActive ? C.teal : 'rgba(192,212,234,0.45)'} />}
+                          {svgPath ? (
+                            <path d={svgPath}
+                                  fill={isActive ? C.teal : 'rgba(192,212,234,0.45)'}
+                                  stroke={isActive ? C.teal : 'rgba(192,212,234,0.3)'}
+                                  strokeWidth="0.5"/>
+                          ) : (
+                            <ellipse cx="20" cy="22" rx="13" ry="18"
+                                     fill={isActive ? C.teal : 'rgba(192,212,234,0.45)'} />
+                          )}
                         </svg>
                         <div style={{ fontSize: 12, fontWeight: 700, color: isActive ? C.teal : C.ink }}>{lib.name}</div>
                         <div style={{ fontSize: 10, color: C.muted, letterSpacing: 0.5 }}>{lib.subtitle}</div>
