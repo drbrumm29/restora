@@ -994,10 +994,10 @@ function Dashboard({ navigate, setActivePatient, customPatients=[] }) {
   const allPatients = [...customPatients, ...PATIENTS];
   const cases = allPatients.map(p => ({ ...p, statusColor: colorMap[p.statusColor] || C.teal }));
   const isNarrow = typeof window !== 'undefined' && window.innerWidth < 780;
-  
-  async function openPatient(p) {
+
+  async function openPatient(p, target = "smile-creator") {
     setActivePatient(p);
-    navigate("design-bridge");
+    navigate(target);
   }
   const stats=[
     {label:"Active cases", value:String(cases.length), sub:"April 2026", color:C.teal},
@@ -1005,6 +1005,10 @@ function Dashboard({ navigate, setActivePatient, customPatients=[] }) {
     {label:"In progress", value:String(cases.filter(c=>c.status==="In progress").length), sub:"With lab", color:C.blue},
     {label:"Files needed", value:String(cases.filter(c=>c.status==="Files needed").length), sub:"Action required", color:C.warn},
   ];
+
+  // Pick a "current patient" for the hero CTA — the first active case if any
+  const heroPatient = cases[0] || null;
+
   return (
     <div style={{ flex:1,overflow:"auto",padding:isNarrow?"24px 18px 100px":"40px 48px",background:C.bg,color:C.ink,fontFamily:C.sans }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:14, marginBottom:10 }}>
@@ -1023,6 +1027,36 @@ function Dashboard({ navigate, setActivePatient, customPatients=[] }) {
       </div>
       <div style={{ marginBottom:isNarrow?24:36 }} />
 
+      {/* ── Hero CTA: Start New Smile Design ── */}
+      {heroPatient && (
+        <button onClick={()=>openPatient(heroPatient, "smile-creator")}
+          style={{
+            width:"100%", marginBottom:isNarrow?20:28,
+            padding:isNarrow?"20px 22px":"26px 30px",
+            borderRadius:16,
+            background:`linear-gradient(135deg, ${C.teal}22 0%, ${C.purple}22 100%)`,
+            border:`1.5px solid ${C.teal}60`,
+            cursor:"pointer", fontFamily:C.sans, textAlign:"left",
+            display:"flex", alignItems:"center", justifyContent:"space-between", gap:20,
+            transition:"all .18s",
+          }}
+          onMouseEnter={e=>{ e.currentTarget.style.borderColor = C.teal; e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = `0 12px 40px ${C.teal}30`; }}
+          onMouseLeave={e=>{ e.currentTarget.style.borderColor = C.teal+"60"; e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "none"; }}>
+          <div style={{ display:"flex", alignItems:"center", gap:isNarrow?14:22, minWidth:0, flex:1 }}>
+            <div style={{ width:isNarrow?56:72, height:isNarrow?56:72, borderRadius:16, background:C.teal+"33", color:C.teal, display:"flex", alignItems:"center", justifyContent:"center", fontSize:isNarrow?32:42, flexShrink:0 }}>😊</div>
+            <div style={{ minWidth:0 }}>
+              <div style={{ fontSize:isNarrow?11:13, fontFamily:C.font, letterSpacing:2, color:C.teal, fontWeight:700, marginBottom:4 }}>START NEW SMILE DESIGN</div>
+              <div style={{ fontSize:isNarrow?20:26, fontWeight:800, color:C.ink, marginBottom:4, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{heroPatient.name}</div>
+              <div style={{ fontSize:isNarrow?13:15, color:C.muted }}>{heroPatient.type} · Teeth {heroPatient.teeth}</div>
+            </div>
+          </div>
+          <div style={{ display:"flex", alignItems:"center", gap:10, color:C.teal, fontSize:isNarrow?14:16, fontWeight:700, flexShrink:0 }}>
+            {!isNarrow && <span>Design →</span>}
+            {isNarrow && <span style={{ fontSize:24 }}>→</span>}
+          </div>
+        </button>
+      )}
+
       {/* Stats row */}
       <div style={{ display:"grid",gridTemplateColumns:isNarrow?"repeat(2, 1fr)":"repeat(4, 1fr)",gap:isNarrow?12:18,marginBottom:isNarrow?20:28 }}>
         {stats.map(s => (
@@ -1034,9 +1068,13 @@ function Dashboard({ navigate, setActivePatient, customPatients=[] }) {
         ))}
       </div>
 
-      {/* Quick actions */}
+      {/* Quick actions — now focused on primary clinical tools */}
       <div style={{ display:"grid",gridTemplateColumns:isNarrow?"1fr":"1fr 1fr 1fr",gap:isNarrow?12:18,marginBottom:isNarrow?24:32 }}>
-        {[{label:"New AI Design",desc:"Start a case with AI-guided parameters",icon:"◈",action:"ai-design-guide",color:C.teal},{label:"Design Systems Bridge",desc:"Drop files · auto-route to Mill/Smile/Lab",icon:"✦",action:"design-bridge",color:C.purple},{label:"Export Hub",desc:"Download or send to production",icon:"↑",action:"export",color:C.amber}].map(a=>(
+        {[
+          {label:"Smile Creator",   desc:"2D smile design on patient photo",   icon:"😊", action:"smile-creator", color:C.teal},
+          {label:"Scan Viewer",     desc:"3D scan review + lab export",         icon:"◉",  action:"restoration-cad", color:C.purple},
+          {label:"X-ray Analysis",  desc:"AI-assisted radiograph review",       icon:"△",  action:"xray-analysis", color:C.amber},
+        ].map(a=>(
           <button key={a.label} onClick={()=>navigate(a.action)} style={{ padding:isNarrow?22:30,borderRadius:12,border:`1.5px solid ${a.color+"55"}`,background:a.color+"10",cursor:"pointer",fontFamily:C.sans,textAlign:"left",transition:"all .15s" }}
             onMouseEnter={e=>{e.currentTarget.style.background=a.color+"22"; e.currentTarget.style.borderColor=a.color+"80";}}
             onMouseLeave={e=>{e.currentTarget.style.background=a.color+"10"; e.currentTarget.style.borderColor=a.color+"55";}}>
@@ -1052,7 +1090,7 @@ function Dashboard({ navigate, setActivePatient, customPatients=[] }) {
         <div style={{ padding:"20px 26px",borderBottom:`1px solid ${C.border}`,fontSize:14,fontFamily:C.font,color:C.teal,letterSpacing:2.5,fontWeight:700 }}>ACTIVE CASES</div>
         {cases.map((c,i)=>(
           <div key={c.id} style={{ padding:"24px 26px",borderBottom:i<cases.length-1?`1px solid ${C.borderSoft}`:"none",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",transition:"background .15s" }}
-            onClick={()=>openPatient(c)}
+            onClick={()=>openPatient(c, "smile-creator")}
             onMouseEnter={e=>e.currentTarget.style.background=C.surface2}
             onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
             <div style={{ display:"flex",gap:20,alignItems:"center" }}>
@@ -1064,7 +1102,17 @@ function Dashboard({ navigate, setActivePatient, customPatients=[] }) {
                 <div style={{ fontSize:15,color:C.muted }}>{c.type} · Teeth {c.teeth}</div>
               </div>
             </div>
-            <Tag label={c.status} color={c.statusColor} dim={c.statusColor+"22"} />
+            <div style={{ display:"flex", gap:10, alignItems:"center" }}>
+              <button onClick={(e)=>{ e.stopPropagation(); openPatient(c, "smile-creator"); }}
+                style={{ padding:"7px 14px", borderRadius:7, border:`1px solid ${C.teal}60`, background:C.teal+"15", color:C.teal, fontSize:12, fontWeight:700, fontFamily:C.sans, cursor:"pointer", letterSpacing:0.3 }}>
+                DESIGN
+              </button>
+              <button onClick={(e)=>{ e.stopPropagation(); openPatient(c, "restoration-cad"); }}
+                style={{ padding:"7px 14px", borderRadius:7, border:`1px solid ${C.border}`, background:C.surface2, color:C.muted, fontSize:12, fontWeight:700, fontFamily:C.sans, cursor:"pointer", letterSpacing:0.3 }}>
+                SCAN
+              </button>
+              <Tag label={c.status} color={c.statusColor} dim={c.statusColor+"22"} />
+            </div>
           </div>
         ))}
       </Card>
