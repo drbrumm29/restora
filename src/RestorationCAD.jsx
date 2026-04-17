@@ -62,13 +62,14 @@ function parseSTL(buffer) {
 }
 
 // ── The 3D Viewer ────────────────────────────────────────────────
-function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats, labelMode, toothLabels, onAddLabel, targetTeeth, onPickedLocation, viewAngle }) {
+function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats, labelMode, toothLabels, onAddLabel, targetTeeth, onPickedLocation, viewAngle, orientFlip }) {
   const mountRef = useRef(null);
   const rendererRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
   const meshObjectsRef = useRef({}); // id -> THREE.Mesh
   const labelGroupRef = useRef(null); // THREE.Group for badge sprites
+  const flipGroupRef = useRef(null); // THREE.Group for user-controllable orientation flip
   const rafRef = useRef(0);
   const rotateRef = useRef({ isDragging:false, prevX:0, prevY:0, theta:Math.PI/2, phi:Math.PI/2.3, dist:50, dragDist:0 });
   const raycasterRef = useRef(null);
@@ -100,6 +101,11 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
     const labelGroup = new THREE.Group();
     scene.add(labelGroup);
     labelGroupRef.current = labelGroup;
+
+    // Flip group — wraps all arch meshes, user-controllable X/Y/Z sign
+    const flipGroup = new THREE.Group();
+    scene.add(flipGroup);
+    flipGroupRef.current = flipGroup;
 
     // Raycaster for click-to-label
     raycasterRef.current = new THREE.Raycaster();
@@ -388,7 +394,7 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
           side: THREE.DoubleSide,
         });
         obj = new THREE.Mesh(geom, mat);
-        scene.add(obj);
+        (flipGroupRef.current || scene).add(obj);
         meshObjectsRef.current[m.id] = obj;
         obj.userData.isFresh = true;
       }
@@ -454,6 +460,17 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
 
     onStats?.({ meshCount: meshes.filter(m=>m.visible!==false).length, triCount: totalTris });
   }, [meshes, activeId, wireframe]);
+
+  // Apply user orientation flip to the scene-level flipGroup
+  useEffect(() => {
+    const g = flipGroupRef.current;
+    if (!g) return;
+    g.scale.set(
+      orientFlip?.x ? -1 : 1,
+      orientFlip?.y ? -1 : 1,
+      orientFlip?.z ? -1 : 1,
+    );
+  }, [orientFlip]);
 
   // ── Tooth label badges (sprite-based, always face camera) ──
   useEffect(() => {
@@ -577,6 +594,16 @@ export default function RestorationCAD({ navigate, activePatient }) {
   const [toothLabels, setToothLabels] = useState([]);  // [{num, x, y, z}, ...]
   const [pendingPick, setPendingPick] = useState(null); // { x, y, z }
   const [viewAngle, setViewAngle] = useState(null);    // 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom' | 'iso'
+  // Manual orientation flip — persisted per patient, lets user override auto-orient
+  const [orientFlip, setOrientFlip] = useState(() => {
+    try {
+      const saved = localStorage.getItem('restora-orient-flip');
+      return saved ? JSON.parse(saved) : { x: false, y: false, z: false };
+    } catch { return { x: false, y: false, z: false }; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('restora-orient-flip', JSON.stringify(orientFlip)); } catch {}
+  }, [orientFlip]);
 
   const patient = activePatient || PATIENTS[0];
 
@@ -984,6 +1011,22 @@ export default function RestorationCAD({ navigate, activePatient }) {
         </div>
         <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"center" }}>
           <button onClick={()=>navigate && navigate('smile-creator')} style={{ padding:"10px 16px", borderRadius:8, background:`linear-gradient(135deg, ${C.teal}, ${C.purple})`, color:"white", border:"none", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:C.sans, boxShadow:`0 3px 12px ${C.teal}50` }}>😊 Design in Smile Creator →</button>
+          {/* Orientation flip controls — user can correct if auto-orient got it wrong */}
+          <div style={{ display:"flex", gap:4, padding:"4px", borderRadius:10, background:C.surface2, border:`1px solid ${C.border}` }}>
+            <span style={{ fontSize:11, color:C.muted, alignSelf:"center", padding:"0 8px", fontFamily:C.font, letterSpacing:1, fontWeight:700 }}>FLIP</span>
+            {['x','y','z'].map(axis => (
+              <button key={axis}
+                onClick={()=>setOrientFlip(f => ({ ...f, [axis]: !f[axis] }))}
+                title={axis === 'y' ? 'Flip upside-down / right-side-up' : axis === 'x' ? 'Mirror left-right' : 'Flip front-back'}
+                style={{
+                  width:34, height:30, borderRadius:6,
+                  background: orientFlip[axis] ? C.teal : 'transparent',
+                  color: orientFlip[axis] ? 'white' : C.ink,
+                  border:`1px solid ${orientFlip[axis] ? C.teal : C.borderSoft}`,
+                  fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:C.font, textTransform:"uppercase"
+                }}>{axis}</button>
+            ))}
+          </div>
           <button onClick={()=>setWire(w=>!w)} style={{ padding:"10px 16px", borderRadius:8, background:wireframe?C.tealDim:C.surface2, color:wireframe?C.teal:C.muted, border:`1px solid ${wireframe?C.tealBorder:C.border}`, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:C.sans }}>{wireframe?"✓ Wireframe":"Wireframe"}</button>
           <button onClick={exportDesign} disabled={meshes.length===0} style={{ padding:"10px 16px", borderRadius:8, background:meshes.length?C.teal:C.surface2, color:meshes.length?"white":C.muted, border:"none", fontSize:14, fontWeight:700, cursor:meshes.length?"pointer":"not-allowed", fontFamily:C.sans }}>⬇ Export Scan STL</button>
         </div>
@@ -1005,6 +1048,7 @@ export default function RestorationCAD({ navigate, activePatient }) {
             targetTeeth={targetTeeth}
             onPickedLocation={(loc) => setPendingPick(loc)}
             viewAngle={viewAngle}
+            orientFlip={orientFlip}
           />
 
           {loading && (
