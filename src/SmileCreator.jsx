@@ -211,6 +211,8 @@ export default function SmileCreator({ navigate, activePatient }) {
   const [activeHandle, setActiveHandle] = useState(null);
   const [showPhoto, setShowPhoto] = useState(true);
   const [showBefore, setShowBefore] = useState(false);
+  const [pulseTick, setPulseTick] = useState(0);
+  const [placementBuffer, setPlacementBuffer] = useState([]);
 
   // Multi-photo design storage — each photo URL gets its own smile curve and
   // tooth placement, because landmarks shift between retracted / smiling /
@@ -874,8 +876,6 @@ export default function SmileCreator({ navigate, activePatient }) {
   };
 
   // Pulse animation loop — keeps ghost dots pulsing while placing the smile curve
-  const [pulseTick, setPulseTick] = useState(0);
-  const [placementBuffer, setPlacementBuffer] = useState([]);
   useEffect(() => {
     if (smileCurve || step !== 2) return;
     let raf;
