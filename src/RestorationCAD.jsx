@@ -598,8 +598,13 @@ export default function RestorationCAD({ navigate, activePatient }) {
   const [orientFlip, setOrientFlip] = useState(() => {
     try {
       const saved = localStorage.getItem('restora-orient-flip');
-      return saved ? JSON.parse(saved) : { x: false, y: false, z: false };
-    } catch { return { x: false, y: false, z: false }; }
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    // Default: Y + Z flipped — correct anatomical orientation after PCA auto-orient.
+    // Y-flip puts upper arch gingiva at top, teeth pointing down (anatomically correct).
+    // Z-flip puts anterior facing camera (labial surfaces toward viewer in FRONT).
+    // Dentist verified this default on Carrie's scans on 2026-04-17.
+    return { x: false, y: true, z: true };
   });
   useEffect(() => {
     try { localStorage.setItem('restora-orient-flip', JSON.stringify(orientFlip)); } catch {}
