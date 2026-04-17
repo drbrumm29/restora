@@ -138,7 +138,10 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
       const cy = e.clientY || e.touches?.[0]?.clientY || 0;
       if (!labelModeRef.current) {
         r.theta -= (cx - r.prevX) * 0.008;
-        r.phi = Math.max(0.05, Math.min(Math.PI - 0.05, r.phi - (cy - r.prevY) * 0.008));
+        r.phi = r.phi - (cy - r.prevY) * 0.008;
+        // No clamp — full rotation allowed. Wrap phi into (-π, π) range for numerical stability.
+        while (r.phi > Math.PI * 2) r.phi -= Math.PI * 2;
+        while (r.phi < -Math.PI * 2) r.phi += Math.PI * 2;
         updateCamera();
       }
       r.dragDist += Math.abs(cx - r.prevX) + Math.abs(cy - r.prevY);
@@ -319,45 +322,35 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
           // Determine by vertex density: the occlusal side has more vertices in
           // the tooth region. Here we use a simpler heuristic: flip axes so the
           // mesh centroid is at origin with expected directions.
-          // For now: compute centroid Y and if it's positive for upper, flip.
           geom.computeBoundingBox();
           const bb = geom.boundingBox;
-          const yCenter = (bb.min.y + bb.max.y) / 2;
-          const zCenter = (bb.min.z + bb.max.z) / 2;
+          const yRange = bb.max.y - bb.min.y;
 
-          // Heuristic: upper arch teeth are the thinner half. Sample triangles in
-          // top half vs bottom half of Y axis; the half with MORE triangles closer
-          // to the center (smaller avg |x|) is the tooth side (teeth are centered
-          // around midline more than gingiva which arches out).
-          // Simpler approach: for now, count which Y half has smaller total extent.
-
-          // Actually simplest: if the user marks slot as 'upper', teeth should
-          // point downward (Y negative), so flip Y if centroid is below the mean.
-          // Let's just flip: upper arch should have -Y = teeth, +Y = gingiva.
-          // Most Medit exports have occlusal at max of the height axis.
-
-          // Heuristic check: the gingival side has wider X extent near top or bottom?
-          // Sample 20% slab at each Y extreme, compare their X-extents.
-          // The gingival side (attached to jaw) has wider X than the occlusal side.
-          function slabExtentX(yMin, yMax) {
+          // Heuristic: the gingival/base side is a single continuous surface that fills
+          // most of the XZ footprint. The occlusal side has individual teeth with air
+          // gaps between them — fewer XZ cells covered in a thin slab at that extreme.
+          // Count unique grid cells (in XZ plane) with vertices present in each Y-slab.
+          function slabCoverage(yMin, yMax) {
             const pos = geom.attributes.position.array;
-            let minX = Infinity, maxX = -Infinity;
+            const cellSize = 1.0; // mm
+            const cells = new Set();
             for (let i = 0; i < pos.length; i += 3) {
               const y = pos[i+1];
               if (y >= yMin && y <= yMax) {
-                if (pos[i] < minX) minX = pos[i];
-                if (pos[i] > maxX) maxX = pos[i];
+                const cx = Math.floor(pos[i] / cellSize);
+                const cz = Math.floor(pos[i+2] / cellSize);
+                cells.add(`${cx},${cz}`);
               }
             }
-            return (maxX === -Infinity) ? 0 : (maxX - minX);
+            return cells.size;
           }
-          const yRange = bb.max.y - bb.min.y;
-          const topSlab = slabExtentX(bb.max.y - yRange * 0.15, bb.max.y);
-          const bottomSlab = slabExtentX(bb.min.y, bb.min.y + yRange * 0.15);
-          // Gingival/base side has LARGER X extent (the arch base is wider than the occlusal ridge)
-          const gingivaAtTop = topSlab > bottomSlab;
-          // For UPPER arch: we want gingiva at TOP (Y positive), teeth at bottom (Y negative)
-          // For LOWER arch: we want gingiva at BOTTOM (Y negative), teeth at top (Y positive)
+          const slabDepth = yRange * 0.08;
+          const topCoverage = slabCoverage(bb.max.y - slabDepth, bb.max.y);
+          const bottomCoverage = slabCoverage(bb.min.y, bb.min.y + slabDepth);
+          // The side with GREATER coverage is the gingival/base side
+          const gingivaAtTop = topCoverage > bottomCoverage;
+          // For UPPER arch: gingiva should be at TOP (+Y), teeth at BOTTOM (-Y)
+          // For LOWER arch: gingiva at BOTTOM (-Y), teeth at TOP (+Y)
           const needFlipY = (m.slot === 'upper' && !gingivaAtTop) || (m.slot === 'lower' && gingivaAtTop);
           if (needFlipY) {
             const pos = geom.attributes.position.array;
@@ -369,10 +362,6 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
             geom.attributes.position.needsUpdate = true;
             if (geom.attributes.normal) geom.attributes.normal.needsUpdate = true;
           }
-
-          // Z sign: anterior side typically has more labial-curve vertices.
-          // Keep both orientations possible; default to current. User can rotate view.
-          // (Anterior/posterior sign error is easy to fix with LEFT/RIGHT view presets.)
 
           geom.computeBoundingBox();
         } else {
