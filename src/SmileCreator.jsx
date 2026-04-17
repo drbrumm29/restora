@@ -1652,12 +1652,12 @@ export default function SmileCreator({ navigate, activePatient }) {
                       imageHeight={photoDim.h}
                       disabled={!photoUrl}
                       onLandmarks={(curve, landmarks) => {
-                        // Use the canine incisal edges (curve[0]=canine_R, curve[5]=canine_L)
-                        // as anchors — commissures sit above the teeth and throw placement off.
-                        // p0 = viewer left = patient's LEFT canine = curve[5]
-                        // p2 = viewer right = patient's RIGHT canine = curve[0]
-                        const p0 = (curve && curve[5]) || (landmarks && landmarks.left_commissure);
-                        const p2 = (curve && curve[0]) || (landmarks && landmarks.right_commissure);
+                        // Use the canine incisal edges as anchors. API indexing:
+                        //   curve[0] = canine_R (patient's right = viewer's left)
+                        //   curve[5] = canine_L (patient's left  = viewer's right)
+                        // SmileCreator convention: p0 = viewer-left (t=0), p2 = viewer-right (t=1)
+                        const p0 = (curve && curve[0]) || (landmarks && landmarks.right_commissure);
+                        const p2 = (curve && curve[5]) || (landmarks && landmarks.left_commissure);
                         const cR = curve && curve[2];
                         const cL = curve && curve[3];
                         const p1 = (cR && cL)
