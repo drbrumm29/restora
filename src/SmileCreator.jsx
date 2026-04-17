@@ -866,6 +866,177 @@ export default function SmileCreator({ navigate, activePatient }) {
     setPlacementBuffer([]);
   };
 
+  // ── PNG export: side-by-side Before / After for patient consultation ──
+  // Renders an offscreen 2400x1400 canvas at export time so we can control
+  // the composition quality and add labels/metadata for the printed deliverable.
+  const exportSideBySidePNG = useCallback(() => {
+    if (!imageRef.current || !photoDim.w) return;
+
+    // Output dimensions (fits standard letter landscape if printed)
+    const OUT_W = 2400;
+    const OUT_H = 1400;
+    const HEADER_H = 150;
+    const FOOTER_H = 80;
+    const PAD = 40;
+    const LABEL_H = 60;
+
+    const panelW = (OUT_W - PAD * 3) / 2;
+    const panelH = OUT_H - HEADER_H - FOOTER_H - LABEL_H - PAD * 2;
+
+    const out = document.createElement('canvas');
+    out.width = OUT_W;
+    out.height = OUT_H;
+    const ctx = out.getContext('2d');
+
+    // Background
+    ctx.fillStyle = '#0d1b2e';
+    ctx.fillRect(0, 0, OUT_W, OUT_H);
+
+    // Header strip
+    ctx.fillStyle = '#132338';
+    ctx.fillRect(0, 0, OUT_W, HEADER_H);
+    ctx.strokeStyle = '#2a4060';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, HEADER_H - 0.5);
+    ctx.lineTo(OUT_W, HEADER_H - 0.5);
+    ctx.stroke();
+
+    // Patient name + case title (left side of header)
+    ctx.fillStyle = '#ffffff';
+    ctx.font = "bold 38px system-ui, -apple-system, sans-serif";
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(activePatient?.name || 'Patient', PAD, 36);
+
+    ctx.fillStyle = '#e0ecf8';
+    ctx.font = "20px system-ui, -apple-system, sans-serif";
+    const subtitle = [
+      activePatient?.type,
+      activePatient?.teeth,
+    ].filter(Boolean).join(' · ');
+    ctx.fillText(subtitle, PAD, 84);
+
+    // Design parameters (right side of header)
+    const today = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    const libLabel = { dannydesigner5: 'Ovoid', dannydesigner4: 'Square', g01: 'Balanced', g02: 'Natural' }[library] || library;
+    const propLabel = PROPORTIONS[proportion]?.label || proportion;
+    ctx.fillStyle = '#c0d4ea';
+    ctx.font = "15px 'DM Mono','JetBrains Mono',monospace";
+    ctx.textAlign = 'right';
+    ctx.fillText(`DESIGN · ${libLabel}`, OUT_W - PAD, 32);
+    ctx.fillText(`SHADE · ${shade}`, OUT_W - PAD, 56);
+    ctx.fillText(`PROPORTION · ${propLabel}`, OUT_W - PAD, 80);
+    ctx.fillText(today.toUpperCase(), OUT_W - PAD, 108);
+
+    // Restora brand (small, bottom-left corner of header)
+    ctx.fillStyle = '#0abab5';
+    ctx.font = "bold 15px 'DM Mono','JetBrains Mono',monospace";
+    ctx.textAlign = 'left';
+    ctx.fillText('RESTORA · SMILE DESIGN', PAD, 118);
+
+    // Panel label strip
+    const labelY = HEADER_H + PAD;
+    // BEFORE label
+    ctx.fillStyle = '#1a2f48';
+    ctx.fillRect(PAD, labelY, panelW, LABEL_H);
+    ctx.fillStyle = '#f59e0b';
+    ctx.font = "bold 24px 'DM Mono','JetBrains Mono',monospace";
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('BEFORE', PAD + panelW / 2, labelY + LABEL_H / 2);
+    // AFTER label
+    const afterX = PAD * 2 + panelW;
+    ctx.fillStyle = '#0abab5';
+    ctx.fillRect(afterX, labelY, panelW, LABEL_H);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('AFTER', afterX + panelW / 2, labelY + LABEL_H / 2);
+
+    // Compute photo placement within each panel (fit preserving aspect)
+    const photoY = labelY + LABEL_H + PAD / 2;
+    const availableH = panelH - LABEL_H - PAD / 2;
+    const imgAspect = photoDim.w / photoDim.h;
+    const panelAspect = panelW / availableH;
+    let drawW, drawH;
+    if (imgAspect > panelAspect) {
+      drawW = panelW;
+      drawH = panelW / imgAspect;
+    } else {
+      drawH = availableH;
+      drawW = availableH * imgAspect;
+    }
+    const beforeX = PAD + (panelW - drawW) / 2;
+    const afterPhotoX = afterX + (panelW - drawW) / 2;
+    const panelPhotoY = photoY + (availableH - drawH) / 2;
+
+    // Draw BEFORE photo (just the photo)
+    ctx.drawImage(imageRef.current, beforeX, panelPhotoY, drawW, drawH);
+
+    // Draw AFTER: photo + teeth overlay
+    ctx.drawImage(imageRef.current, afterPhotoX, panelPhotoY, drawW, drawH);
+
+    // Paint teeth on the AFTER panel using the same relative coords as on screen
+    // Image-space coords in `teeth` correspond to photoDim — scale to drawW/drawH
+    const scale = drawW / photoDim.w;  // image pixels → panel pixels
+    if (teeth.length > 0) {
+      teeth.forEach(tooth => {
+        ctx.save();
+        const cx = afterPhotoX + tooth.cx * scale;
+        const cy = panelPhotoY + tooth.cy * scale;
+        const cW = tooth.width * scale;
+        const cH = tooth.height * scale;
+        ctx.translate(cx, cy);
+        ctx.rotate(tooth.rotation);
+
+        // Outline
+        let outline = resolveOutline(library, tooth.num, tooth.type);
+        if (tooth.num >= 9) outline = outline.map(([x, y]) => [-x, y]);
+        const shadeColor = SHADE_HEX[shade] || "#f5ead0";
+        ctx.beginPath();
+        outline.forEach((pt, i) => {
+          const x = pt[0] * cW;
+          const y = pt[1] * cH;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.closePath();
+        ctx.fillStyle = shadeColor + 'e6';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.restore();
+      });
+    }
+
+    // Footer disclaimer
+    ctx.fillStyle = '#213858';
+    ctx.fillRect(0, OUT_H - FOOTER_H, OUT_W, FOOTER_H);
+    ctx.fillStyle = '#c0d4ea';
+    ctx.font = "14px system-ui, -apple-system, sans-serif";
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(
+      'Simulated smile visualization for consultation purposes. Final restoration shape and shade are determined by the dental laboratory.',
+      OUT_W / 2, OUT_H - FOOTER_H / 2
+    );
+
+    // Download
+    out.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const patientSlug = (activePatient?.name || 'patient').toLowerCase().replace(/\s+/g, '-');
+      const dateSlug = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `smile-design-${patientSlug}-${dateSlug}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 500);
+    }, 'image/png');
+  }, [activePatient, library, proportion, shade, teeth, photoDim]);
+
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Escape') setSelectedTooth(null);
     if (e.key === 'Delete' && selectedTooth !== null) {
@@ -952,30 +1123,51 @@ export default function SmileCreator({ navigate, activePatient }) {
               {placementBuffer.length} of 3 points placed. Next: {['LEFT commissure','MIDLINE','RIGHT commissure'][placementBuffer.length]}
             </div>
           )}
-          {/* Before/After toggle */}
+          {/* Canvas overlay buttons (top right) */}
           {teeth.length > 0 && (
-            <button onClick={() => setShowBefore(!showBefore)}
-              style={{
-                position: "absolute", top: 18, right: 18,
-                padding: "10px 18px",
-                borderRadius: 20,
-                background: "rgba(13, 27, 46, 0.82)",
-                backdropFilter: "blur(10px)",
-                color: "white",
-                border: `1px solid ${showBefore ? C.amber : C.teal}`,
-                fontSize: 12,
-                fontFamily: C.sans,
-                fontWeight: 600,
-                letterSpacing: 0.3,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
-              <span style={{ width: 7, height: 7, borderRadius: 4, background: showBefore ? C.amber : C.teal, display: "inline-block" }}/>
-              {showBefore ? "Before" : "After"}
-            </button>
+            <div style={{ position: "absolute", top: 18, right: 18, display: "flex", gap: 8 }}>
+              <button onClick={exportSideBySidePNG}
+                title="Download side-by-side Before / After PNG for patient consultation"
+                style={{
+                  padding: "10px 18px",
+                  borderRadius: 20,
+                  background: C.teal,
+                  color: "white",
+                  border: "none",
+                  fontSize: 12,
+                  fontFamily: C.sans,
+                  fontWeight: 700,
+                  letterSpacing: 0.3,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 7,
+                  boxShadow: `0 3px 14px ${C.teal}60`,
+                }}>
+                ⬇ Export PNG
+              </button>
+              <button onClick={() => setShowBefore(!showBefore)}
+                style={{
+                  padding: "10px 18px",
+                  borderRadius: 20,
+                  background: "rgba(13, 27, 46, 0.82)",
+                  backdropFilter: "blur(10px)",
+                  color: "white",
+                  border: `1px solid ${showBefore ? C.amber : C.teal}`,
+                  fontSize: 12,
+                  fontFamily: C.sans,
+                  fontWeight: 600,
+                  letterSpacing: 0.3,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <span style={{ width: 7, height: 7, borderRadius: 4, background: showBefore ? C.amber : C.teal, display: "inline-block" }}/>
+                {showBefore ? "Before" : "After"}
+              </button>
+            </div>
           )}
         </div>
 
