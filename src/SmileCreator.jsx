@@ -1654,8 +1654,8 @@ export default function SmileCreator({ navigate, activePatient }) {
                       onLandmarks={(curve, landmarks) => {
                         const rc = landmarks && landmarks.right_commissure;
                         const lc = landmarks && landmarks.left_commissure;
-                        const p0 = rc || (curve && curve[0]);
-                        const p2 = lc || (curve && curve[5]);
+                        const p0 = lc || (curve && curve[5]);
+                        const p2 = rc || (curve && curve[0]);
                         const cR = curve && curve[2];
                         const cL = curve && curve[3];
                         const p1 = (cR && cL)
