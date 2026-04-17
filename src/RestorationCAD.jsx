@@ -70,7 +70,7 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
   const meshObjectsRef = useRef({}); // id -> THREE.Mesh
   const labelGroupRef = useRef(null); // THREE.Group for badge sprites
   const rafRef = useRef(0);
-  const rotateRef = useRef({ isDragging:false, prevX:0, prevY:0, theta:Math.PI/4, phi:Math.PI/3, dist:50, dragDist:0 });
+  const rotateRef = useRef({ isDragging:false, prevX:0, prevY:0, theta:Math.PI/2, phi:Math.PI/2.3, dist:50, dragDist:0 });
   const raycasterRef = useRef(null);
   const labelModeRef = useRef(labelMode);
   useEffect(() => { labelModeRef.current = labelMode; }, [labelMode]);
@@ -252,14 +252,133 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
         geom.setAttribute('position', new THREE.BufferAttribute(m.positions, 3));
         if (m.normals) geom.setAttribute('normal', new THREE.BufferAttribute(m.normals, 3));
         else geom.computeVertexNormals();
-        // Dental scanner convention: Z-up (occlusal plane = Z), Y-anterior (front of mouth)
-        // Three.js: Y-up, +Z toward default camera
-        // rotateX(+π/2): (x, y, z) → (x, -z, y)
-        //   - Medit Z (occlusal) → Three.js Y with sign flipped
-        //     → upper arch teeth point DOWN (Y<0), gingiva at Y=0 ✓
-        //     → lower arch teeth point UP (Y>0), gingiva at Y=0 ✓
-        //   - Medit Y (anterior-posterior) → Three.js Z (anterior faces +Z = camera) ✓
-        geom.rotateX(Math.PI / 2);
+
+        // ── Auto-orient arch meshes via bounding-box principal axes ──
+        // We don't trust the scanner's export convention. Instead, measure the
+        // mesh and map its physical axes to Three.js axes:
+        //   widest axis  → Three.js X (left-right across arch)
+        //   2nd-widest   → Three.js Z (anterior-posterior — front of mouth)
+        //   narrowest    → Three.js Y (occlusal-gingival height)
+        //
+        // Only applies to arch meshes (upper/lower). Library teeth (crown) and
+        // single-tooth meshes skip this.
+        if (m.slot === 'upper' || m.slot === 'lower') {
+          geom.computeBoundingBox();
+          const size = new THREE.Vector3();
+          geom.boundingBox.getSize(size);
+
+          // Rank axes by extent
+          const axes = [
+            { axis: 'x', extent: size.x },
+            { axis: 'y', extent: size.y },
+            { axis: 'z', extent: size.z },
+          ].sort((a, b) => b.extent - a.extent);
+
+          const widestAxis = axes[0].axis;      // → target Three.js X
+          const mediumAxis = axes[1].axis;      // → target Three.js Z
+          const narrowAxis = axes[2].axis;      // → target Three.js Y
+
+          // Build remap: sourceAxis index → targetAxis index in final (x,y,z)
+          // We need a rotation matrix such that:
+          //   (v_widest, v_medium, v_narrow) → (v'_x, v'_z, v'_y)
+          // i.e. the coord on the widest axis becomes X, medium becomes Z, narrow becomes Y
+          const axisIndex = { x: 0, y: 1, z: 2 };
+          const sourceToTarget = [null, null, null];  // sourceToTarget[srcIdx] = tgtIdx
+          sourceToTarget[axisIndex[widestAxis]] = 0;   // → X
+          sourceToTarget[axisIndex[mediumAxis]] = 2;   // → Z
+          sourceToTarget[axisIndex[narrowAxis]] = 1;   // → Y
+
+          // Apply the permutation to each vertex
+          const positions = geom.attributes.position.array;
+          const newPositions = new Float32Array(positions.length);
+          for (let i = 0; i < positions.length; i += 3) {
+            const v = [positions[i], positions[i+1], positions[i+2]];
+            for (let s = 0; s < 3; s++) {
+              newPositions[i + sourceToTarget[s]] = v[s];
+            }
+          }
+          geom.setAttribute('position', new THREE.BufferAttribute(newPositions, 3));
+
+          // Also permute normals if present
+          if (geom.attributes.normal) {
+            const normals = geom.attributes.normal.array;
+            const newNormals = new Float32Array(normals.length);
+            for (let i = 0; i < normals.length; i += 3) {
+              const n = [normals[i], normals[i+1], normals[i+2]];
+              for (let s = 0; s < 3; s++) {
+                newNormals[i + sourceToTarget[s]] = n[s];
+              }
+            }
+            geom.setAttribute('normal', new THREE.BufferAttribute(newNormals, 3));
+          }
+
+          // After permutation, we know X=L-R, Z=A-P, Y=height. But we don't yet
+          // know the SIGN: is occlusal +Y or -Y? Is anterior +Z or -Z?
+          // Heuristic: for upper arch, occlusal should be BELOW gingiva in camera
+          // view (teeth point down). That means teeth should be at Y < 0.
+          // Determine by vertex density: the occlusal side has more vertices in
+          // the tooth region. Here we use a simpler heuristic: flip axes so the
+          // mesh centroid is at origin with expected directions.
+          // For now: compute centroid Y and if it's positive for upper, flip.
+          geom.computeBoundingBox();
+          const bb = geom.boundingBox;
+          const yCenter = (bb.min.y + bb.max.y) / 2;
+          const zCenter = (bb.min.z + bb.max.z) / 2;
+
+          // Heuristic: upper arch teeth are the thinner half. Sample triangles in
+          // top half vs bottom half of Y axis; the half with MORE triangles closer
+          // to the center (smaller avg |x|) is the tooth side (teeth are centered
+          // around midline more than gingiva which arches out).
+          // Simpler approach: for now, count which Y half has smaller total extent.
+
+          // Actually simplest: if the user marks slot as 'upper', teeth should
+          // point downward (Y negative), so flip Y if centroid is below the mean.
+          // Let's just flip: upper arch should have -Y = teeth, +Y = gingiva.
+          // Most Medit exports have occlusal at max of the height axis.
+
+          // Heuristic check: the gingival side has wider X extent near top or bottom?
+          // Sample 20% slab at each Y extreme, compare their X-extents.
+          // The gingival side (attached to jaw) has wider X than the occlusal side.
+          function slabExtentX(yMin, yMax) {
+            const pos = geom.attributes.position.array;
+            let minX = Infinity, maxX = -Infinity;
+            for (let i = 0; i < pos.length; i += 3) {
+              const y = pos[i+1];
+              if (y >= yMin && y <= yMax) {
+                if (pos[i] < minX) minX = pos[i];
+                if (pos[i] > maxX) maxX = pos[i];
+              }
+            }
+            return (maxX === -Infinity) ? 0 : (maxX - minX);
+          }
+          const yRange = bb.max.y - bb.min.y;
+          const topSlab = slabExtentX(bb.max.y - yRange * 0.15, bb.max.y);
+          const bottomSlab = slabExtentX(bb.min.y, bb.min.y + yRange * 0.15);
+          // Gingival/base side has LARGER X extent (the arch base is wider than the occlusal ridge)
+          const gingivaAtTop = topSlab > bottomSlab;
+          // For UPPER arch: we want gingiva at TOP (Y positive), teeth at bottom (Y negative)
+          // For LOWER arch: we want gingiva at BOTTOM (Y negative), teeth at top (Y positive)
+          const needFlipY = (m.slot === 'upper' && !gingivaAtTop) || (m.slot === 'lower' && gingivaAtTop);
+          if (needFlipY) {
+            const pos = geom.attributes.position.array;
+            for (let i = 0; i < pos.length; i += 3) pos[i+1] = -pos[i+1];
+            if (geom.attributes.normal) {
+              const nor = geom.attributes.normal.array;
+              for (let i = 0; i < nor.length; i += 3) nor[i+1] = -nor[i+1];
+            }
+            geom.attributes.position.needsUpdate = true;
+            if (geom.attributes.normal) geom.attributes.normal.needsUpdate = true;
+          }
+
+          // Z sign: anterior side typically has more labial-curve vertices.
+          // Keep both orientations possible; default to current. User can rotate view.
+          // (Anterior/posterior sign error is easy to fix with LEFT/RIGHT view presets.)
+
+          geom.computeBoundingBox();
+        } else {
+          // Non-arch meshes (library teeth, preps, bite) — keep legacy rotation
+          geom.rotateX(Math.PI / 2);
+        }
 
         // For library teeth (crown slot): center geometry on its own bbox
         // so the pivot is at tooth center. This makes rotate/scale feel natural.
@@ -359,6 +478,9 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
       if (s.material) s.material.dispose();
     }
     if (!toothLabels || toothLabels.length === 0) return;
+    // Legacy labels from old 3D workflow are hidden in Scan Viewer.
+    // Design workflow moved to Smile Creator (2D).
+    return;
     const offset = rotateRef.current.centerOffset || { x:0, y:0, z:0 };
 
     toothLabels.forEach(lbl => {
