@@ -32,20 +32,21 @@ const C = {
 };
 
 // ── Navigation screens ─────────────────────────────────────────────
-// Three sections, consistent geometric icons, minimal badges.
-// Smile Creator is the primary design tool; Restoration CAD is a viewer.
+// 7 screens, 4 sections. Tools accessed as route-only (not in sidebar):
+//   ai-design-guide, design-bridge — invoked from Dashboard buttons
 const SCREENS = {
   "dashboard":        { label:"Dashboard",        icon:"◇", section:"Start" },
   "smile-creator":    { label:"Smile Creator",    icon:"○", section:"Design" },
   "restoration-cad":  { label:"Scan Viewer",      icon:"◐", section:"Design" },
-  "smile-sim":        { label:"Photo Overlay",    icon:"◑", section:"Design" },
   "tooth-library":    { label:"Tooth Library",    icon:"▣", section:"Design" },
   "implant-plan":     { label:"Implant Planning", icon:"◆", section:"Planning" },
   "radiograph":       { label:"X-ray Analysis",   icon:"△", section:"Planning" },
   "full-arch":        { label:"Full Arch",         icon:"◇", section:"Planning" },
-  "design-bridge":    { label:"Design Systems",   icon:"◫", section:"Planning" },
-  "ai-design-guide":  { label:"AI Guide",         icon:"✦", section:"Planning" },
   "export":           { label:"Export",            icon:"↗", section:"Delivery" },
+  // hidden routes (still navigable):
+  "smile-sim":        { label:"Photo Overlay",    icon:"◑", hidden:true },
+  "design-bridge":    { label:"Design Systems",   icon:"◫", hidden:true },
+  "ai-design-guide":  { label:"AI Guide",         icon:"✦", hidden:true },
 };
 
 // ── Shared atoms ───────────────────────────────────────────────────
@@ -1338,7 +1339,10 @@ const SECTIONS = ["Start","Design","Planning","Delivery","Library"];
 
 function Sidebar({ screen, navigate, activePatient }) {
   const grouped = {};
-  Object.entries(SCREENS).forEach(([k,v])=>{ (grouped[v.section]=[...(grouped[v.section]||[]),{k,...v}]); });
+  Object.entries(SCREENS).forEach(([k,v])=>{
+    if (v.hidden || !v.section) return;
+    grouped[v.section]=[...(grouped[v.section]||[]),{k,...v}];
+  });
   const p = activePatient;
   const displayName = p?.name || "No active patient";
   const displayInitials = p?.initials || "—";
