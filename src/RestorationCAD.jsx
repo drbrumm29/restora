@@ -523,18 +523,37 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
   // ── View preset snapping (front/back/left/right/top/bottom/iso) ──
   useEffect(() => {
     if (!viewAngle || !rotateRef.current.updateCamera) return;
-    // Target angles in spherical coordinates
-    const presets = {
-      front:  { theta: Math.PI/2,       phi: Math.PI/2 },       // looking at +Z
-      back:   { theta: -Math.PI/2,      phi: Math.PI/2 },       // looking at -Z
-      left:   { theta: Math.PI,         phi: Math.PI/2 },       // looking at -X
-      right:  { theta: 0,               phi: Math.PI/2 },       // looking at +X
-      top:    { theta: Math.PI/2,       phi: 0.15 },            // looking down
-      bottom: { theta: Math.PI/2,       phi: Math.PI - 0.15 },  // looking up
-      iso:    { theta: Math.PI/4,       phi: Math.PI/3 },       // isometric default
+    // Base target angles assuming unflipped scene
+    const basePresets = {
+      front:  { theta: Math.PI/2,       phi: Math.PI/2 },
+      back:   { theta: -Math.PI/2,      phi: Math.PI/2 },
+      left:   { theta: Math.PI,         phi: Math.PI/2 },
+      right:  { theta: 0,               phi: Math.PI/2 },
+      top:    { theta: Math.PI/2,       phi: 0.15 },
+      bottom: { theta: Math.PI/2,       phi: Math.PI - 0.15 },
+      iso:    { theta: Math.PI/4,       phi: Math.PI/3 },
     };
-    const target = presets[viewAngle];
-    if (!target) return;
+    let target = { ...basePresets[viewAngle] };
+    if (!target.theta && target.theta !== 0) return;
+
+    // Compensate for scene-level flips: if Z is flipped, FRONT and BACK swap
+    // (what was +Z anterior is now visible from -Z), etc.
+    // Apply to theta / phi so clicking FRONT actually lands on the labial view.
+    if (orientFlip) {
+      // Z flip: mirror theta across π/2 axis for front/back (they swap)
+      if (orientFlip.z && (viewAngle === 'front' || viewAngle === 'back')) {
+        target.theta = -target.theta;
+      }
+      // X flip: left/right swap
+      if (orientFlip.x && (viewAngle === 'left' || viewAngle === 'right')) {
+        target.theta = target.theta + Math.PI;
+      }
+      // Y flip: top/bottom swap
+      if (orientFlip.y && (viewAngle === 'top' || viewAngle === 'bottom')) {
+        target.phi = Math.PI - target.phi;
+      }
+    }
+
     const r = rotateRef.current;
     const startTheta = r.theta;
     const startPhi = r.phi;
