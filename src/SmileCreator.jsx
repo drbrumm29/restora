@@ -11,6 +11,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import TOOTH_SILHOUETTES from "./tooth-silhouettes.json";
+import AutoPlaceSmileButton from "./AutoPlaceSmileButton";
 
 const C = {
   bg:"#0d1b2e", surface:"#132338", surface2:"#1a2f48", surface3:"#213858",
@@ -1643,9 +1644,33 @@ export default function SmileCreator({ navigate, activePatient }) {
             <div style={{ marginBottom: 22 }}>
               <div style={{ fontSize: 11, color: C.muted, letterSpacing: 1, fontWeight: 600, marginBottom: 10, textTransform: "uppercase" }}>Smile Curve</div>
               {!smileCurve ? (
-                <div style={{ padding: "11px 13px", background: C.tealDim, border: `1px solid ${C.tealBorder}`, borderRadius: 8, fontSize: 12, color: C.ink, lineHeight: 1.6 }}>
-                  Follow the pulsing dots on the photo. Click each in turn: left lip corner, midline, right lip corner.
-                </div>
+                <>
+                  <div style={{ marginBottom: 10 }}>
+                    <AutoPlaceSmileButton
+                      imageUrl={photoUrl}
+                      imageWidth={photoDim.w}
+                      imageHeight={photoDim.h}
+                      disabled={!photoUrl}
+                      onLandmarks={(curve, landmarks) => {
+                        const rc = landmarks && landmarks.right_commissure;
+                        const lc = landmarks && landmarks.left_commissure;
+                        const p0 = rc || (curve && curve[0]);
+                        const p2 = lc || (curve && curve[5]);
+                        const cR = curve && curve[2];
+                        const cL = curve && curve[3];
+                        const p1 = (cR && cL)
+                          ? { x: (cR.x + cL.x) / 2, y: (cR.y + cL.y) / 2 }
+                          : { x: (p0.x + p2.x) / 2, y: (p0.y + p2.y) / 2 };
+                        if (!p0 || !p2) return;
+                        setSmileCurve({ p0, p1, p2 });
+                        setPlacementBuffer([]);
+                      }}
+                    />
+                  </div>
+                  <div style={{ padding: "11px 13px", background: C.tealDim, border: `1px solid ${C.tealBorder}`, borderRadius: 8, fontSize: 12, color: C.ink, lineHeight: 1.6 }}>
+                    Or follow the pulsing dots on the photo. Click each in turn: left lip corner, midline, right lip corner.
+                  </div>
+                </>
               ) : (
                 <button onClick={resetSmileCurve}
                   style={{ width: "100%", padding: "10px", borderRadius: 8, background: C.surface2, border: `1px solid ${C.border}`, color: C.amber, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: C.sans }}>
