@@ -211,6 +211,14 @@ export default function SmileCreator({ navigate, activePatient }) {
   const [showPhoto, setShowPhoto] = useState(true);
   const [showBefore, setShowBefore] = useState(false);
 
+  // Export dialog state
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportStatus, setExportStatus] = useState(null);  // { kind, message }
+  const [labEmail, setLabEmail] = useState(() => {
+    try { return localStorage.getItem('restora-lab-email') || ''; } catch { return ''; }
+  });
+  const [labNotes, setLabNotes] = useState('');
+
   // Auto-load first photo for active patient
   useEffect(() => {
     if (!activePatient) return;
@@ -1021,21 +1029,168 @@ export default function SmileCreator({ navigate, activePatient }) {
       OUT_W / 2, OUT_H - FOOTER_H / 2
     );
 
-    // Download
-    out.toBlob((blob) => {
-      if (!blob) return;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      const patientSlug = (activePatient?.name || 'patient').toLowerCase().replace(/\s+/g, '-');
-      const dateSlug = new Date().toISOString().slice(0, 10);
-      a.href = url;
-      a.download = `smile-design-${patientSlug}-${dateSlug}.png`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 500);
-    }, 'image/png');
+    // Build the composition and return blob + filename (caller chooses destination)
+    return new Promise((resolve) => {
+      out.toBlob((blob) => {
+        const patientSlug = (activePatient?.name || 'patient').toLowerCase().replace(/\s+/g, '-');
+        const dateSlug = new Date().toISOString().slice(0, 10);
+        resolve({ blob, filename: `smile-design-${patientSlug}-${dateSlug}.png` });
+      }, 'image/png');
+    });
   }, [activePatient, library, proportion, shade, teeth, photoDim]);
+
+  // Build lab handoff JSON — everything needed for the lab to reconstruct the
+  // design in their CAD software (exocad / 3Shape / DentalWings).
+  const buildLabPackage = useCallback(() => {
+    return {
+      format: "restora-smile-design",
+      version: "1.0",
+      exportedAt: new Date().toISOString(),
+      patient: {
+        id: activePatient?.id || null,
+        name: activePatient?.name || null,
+        caseType: activePatient?.type || null,
+        toothRange: activePatient?.teeth || null,
+      },
+      design: {
+        library: library,
+        libraryLabel: { dannydesigner5: 'Ovoid', dannydesigner4: 'Square', g01: 'Balanced', g02: 'Natural' }[library],
+        shade: shade,
+        proportion: proportion,
+        proportionLabel: PROPORTIONS[proportion]?.label,
+        proportionWidths: PROPORTIONS[proportion]?.widths,
+        wlRatio: PROPORTIONS[proportion]?.wlRatio,
+      },
+      photoCalibration: {
+        sourceUrl: photoUrl,
+        photoDimensionsPx: { width: photoDim.w, height: photoDim.h },
+        smileCurve: smileCurve ? {
+          leftCommissure: { x: smileCurve.p0.x, y: smileCurve.p0.y },
+          midline:        { x: smileCurve.p1.x, y: smileCurve.p1.y },
+          rightCommissure:{ x: smileCurve.p2.x, y: smileCurve.p2.y },
+          // Arc length in photo pixels — useful for lab to estimate real-world
+          // scale if they know the patient's intercanine or intercommissural distance
+          arcLengthPx: curveArcLength(smileCurve.p0, smileCurve.p1, smileCurve.p2),
+        } : null,
+      },
+      teeth: teeth.map(t => ({
+        number: t.num,                      // Universal numbering (#4-#13)
+        type: t.type,                       // central | lateral | canine | premolar
+        libraryFile: libraryFileForNumber(t.num),  // e.g. "1.stl"
+        mirrored: t.num >= 9,               // left-side teeth are X-mirrored
+        positionPx: { x: t.cx, y: t.cy },   // center in photo-pixel coords
+        widthPx: t.width,
+        heightPx: t.height,
+        rotationRad: t.rotation,
+      })),
+      notes: labNotes || null,
+    };
+  }, [activePatient, library, shade, proportion, photoUrl, photoDim, smileCurve, teeth, labNotes]);
+
+  // Helper: trigger a file download from a blob
+  const downloadBlob = (blob, filename) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 500);
+  };
+
+  // ── Destination handlers ──────────────────────────────────────────
+  // Each returns a promise that resolves when the action completes.
+
+  const destinationDownload = async () => {
+    const { blob, filename } = await exportSideBySidePNG();
+    if (!blob) throw new Error("PNG generation failed");
+    downloadBlob(blob, filename);
+    setExportStatus({ kind: 'success', message: `Downloaded ${filename}` });
+  };
+
+  const destinationPrinter = async () => {
+    const { blob } = await exportSideBySidePNG();
+    if (!blob) throw new Error("PNG generation failed");
+    // Open PNG in a new window and invoke print dialog
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, '_blank');
+    if (!win) {
+      setExportStatus({ kind: 'error', message: 'Popup blocked — allow popups to print' });
+      return;
+    }
+    win.addEventListener('load', () => {
+      try { win.print(); } catch {}
+    }, { once: true });
+    setExportStatus({ kind: 'success', message: 'Opened in new tab for printing' });
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  };
+
+  const destinationLab = async () => {
+    if (!labEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(labEmail)) {
+      setExportStatus({ kind: 'error', message: 'Enter a valid lab email first' });
+      return;
+    }
+    try { localStorage.setItem('restora-lab-email', labEmail); } catch {}
+
+    // Build + download BOTH files (PNG visual + JSON handoff)
+    const { blob: pngBlob, filename: pngName } = await exportSideBySidePNG();
+    const patientSlug = (activePatient?.name || 'patient').toLowerCase().replace(/\s+/g, '-');
+    const dateSlug = new Date().toISOString().slice(0, 10);
+    const jsonName = `lab-handoff-${patientSlug}-${dateSlug}.json`;
+    const jsonBlob = new Blob(
+      [JSON.stringify(buildLabPackage(), null, 2)],
+      { type: 'application/json' }
+    );
+
+    downloadBlob(pngBlob, pngName);
+    setTimeout(() => downloadBlob(jsonBlob, jsonName), 200);  // stagger so both downloads register
+
+    // Open a mail draft addressed to the lab with the design parameters
+    const subject = encodeURIComponent(`Smile design — ${activePatient?.name || 'patient'} (${activePatient?.teeth || ''})`);
+    const libLabel = { dannydesigner5: 'Ovoid', dannydesigner4: 'Square', g01: 'Balanced', g02: 'Natural' }[library] || library;
+    const bodyLines = [
+      `Attached: smile design visualization (PNG) and lab handoff package (JSON).`,
+      ``,
+      `Patient: ${activePatient?.name || ''}`,
+      `Case: ${activePatient?.type || ''} · ${activePatient?.teeth || ''}`,
+      ``,
+      `Design parameters:`,
+      `  Library: ${libLabel}`,
+      `  Shade: ${shade}`,
+      `  Proportion: ${PROPORTIONS[proportion]?.label || proportion}`,
+      ``,
+      labNotes ? `Notes: ${labNotes}` : '',
+      ``,
+      `Please confirm receipt and turnaround estimate.`,
+      `—`,
+      `Sent from Restora`,
+    ].filter(Boolean).join('\n');
+    const body = encodeURIComponent(bodyLines);
+    // mailto will open the default mail client with a pre-filled draft
+    window.location.href = `mailto:${labEmail}?subject=${subject}&body=${body}`;
+
+    setExportStatus({
+      kind: 'success',
+      message: `2 files downloaded. Attach them to the email draft that just opened.`,
+    });
+  };
+
+  const destinationClipboard = async () => {
+    try {
+      const { blob } = await exportSideBySidePNG();
+      if (!blob) throw new Error("PNG generation failed");
+      if (!navigator.clipboard || !window.ClipboardItem) {
+        throw new Error("Clipboard API not supported in this browser");
+      }
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': blob }),
+      ]);
+      setExportStatus({ kind: 'success', message: 'PNG copied — paste anywhere (⌘V / Ctrl+V)' });
+    } catch (err) {
+      setExportStatus({ kind: 'error', message: err.message || 'Copy failed' });
+    }
+  };
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Escape') setSelectedTooth(null);
@@ -1126,8 +1281,8 @@ export default function SmileCreator({ navigate, activePatient }) {
           {/* Canvas overlay buttons (top right) */}
           {teeth.length > 0 && (
             <div style={{ position: "absolute", top: 18, right: 18, display: "flex", gap: 8 }}>
-              <button onClick={exportSideBySidePNG}
-                title="Download side-by-side Before / After PNG for patient consultation"
+              <button onClick={() => { setExportStatus(null); setExportOpen(true); }}
+                title="Export this design — download, send to lab, print, or copy"
                 style={{
                   padding: "10px 18px",
                   borderRadius: 20,
@@ -1144,7 +1299,7 @@ export default function SmileCreator({ navigate, activePatient }) {
                   gap: 7,
                   boxShadow: `0 3px 14px ${C.teal}60`,
                 }}>
-                ⬇ Export PNG
+                ⬆ Export
               </button>
               <button onClick={() => setShowBefore(!showBefore)}
                 style={{
@@ -1167,6 +1322,155 @@ export default function SmileCreator({ navigate, activePatient }) {
                 <span style={{ width: 7, height: 7, borderRadius: 4, background: showBefore ? C.amber : C.teal, display: "inline-block" }}/>
                 {showBefore ? "Before" : "After"}
               </button>
+            </div>
+          )}
+
+          {/* Export dialog — modal overlay on canvas */}
+          {exportOpen && (
+            <div
+              onClick={() => setExportOpen(false)}
+              style={{
+                position: "absolute", inset: 0, zIndex: 20,
+                background: "rgba(5, 12, 24, 0.72)", backdropFilter: "blur(6px)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                animation: "fadeIn 0.15s ease-out",
+              }}
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  width: 480, maxWidth: "calc(100% - 40px)",
+                  background: C.surface,
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 14,
+                  boxShadow: "0 24px 64px rgba(0,0,0,.5)",
+                  overflow: "hidden",
+                  fontFamily: C.sans,
+                }}>
+                {/* Header */}
+                <div style={{ padding: "18px 22px 14px", borderBottom: `1px solid ${C.borderSoft}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: C.ink }}>Export Design</div>
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{activePatient?.name} · {teeth.length} teeth</div>
+                  </div>
+                  <button onClick={() => setExportOpen(false)}
+                    style={{ background: "transparent", border: "none", color: C.muted, fontSize: 22, cursor: "pointer", padding: 4, lineHeight: 1 }}>×</button>
+                </div>
+
+                {/* Destination options */}
+                <div style={{ padding: "14px 16px 4px", display: "flex", flexDirection: "column", gap: 8 }}>
+                  {[
+                    {
+                      id: 'download',
+                      icon: '⬇',
+                      title: 'Download PNG',
+                      desc: 'Save Before/After image to your device',
+                      color: C.teal,
+                      onClick: destinationDownload,
+                    },
+                    {
+                      id: 'lab',
+                      icon: '✉',
+                      title: 'Send to Lab',
+                      desc: 'Email with PNG + lab handoff JSON attached',
+                      color: C.purple,
+                      onClick: destinationLab,
+                      requires: 'email',
+                    },
+                    {
+                      id: 'print',
+                      icon: '🖨',
+                      title: 'Send to Printer',
+                      desc: 'Open print dialog for patient hand-off copy',
+                      color: C.amber,
+                      onClick: destinationPrinter,
+                    },
+                    {
+                      id: 'copy',
+                      icon: '⎘',
+                      title: 'Copy to Clipboard',
+                      desc: 'Paste into Slack, email, or any app',
+                      color: C.green,
+                      onClick: destinationClipboard,
+                    },
+                  ].map(opt => (
+                    <button key={opt.id}
+                      onClick={async () => {
+                        try {
+                          await opt.onClick();
+                        } catch (err) {
+                          setExportStatus({ kind: 'error', message: err.message || 'Something went wrong' });
+                        }
+                      }}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 14,
+                        padding: "14px 14px",
+                        borderRadius: 10,
+                        background: C.surface2,
+                        border: `1px solid ${C.border}`,
+                        color: C.ink,
+                        cursor: "pointer",
+                        textAlign: "left",
+                        fontFamily: C.sans,
+                        transition: "all 0.12s",
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = opt.color; e.currentTarget.style.background = C.surface3; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.surface2; }}
+                    >
+                      <div style={{ width: 42, height: 42, borderRadius: 10, background: opt.color + '22', color: opt.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>
+                        {opt.icon}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 2 }}>{opt.title}</div>
+                        <div style={{ fontSize: 12, color: C.muted }}>{opt.desc}</div>
+                      </div>
+                      <div style={{ color: C.muted, fontSize: 18 }}>›</div>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Lab email + notes (only relevant for Send to Lab) */}
+                <div style={{ padding: "8px 16px 14px" }}>
+                  <div style={{ fontSize: 11, color: C.muted, letterSpacing: 1, fontWeight: 600, textTransform: "uppercase", margin: "6px 2px 8px" }}>Lab details (for ✉ Send to Lab)</div>
+                  <input
+                    type="email"
+                    placeholder="lab@yourdentallab.com"
+                    value={labEmail}
+                    onChange={(e) => setLabEmail(e.target.value)}
+                    style={{
+                      width: "100%", padding: "10px 12px", borderRadius: 7,
+                      border: `1px solid ${C.border}`, background: C.surface2, color: C.ink,
+                      fontSize: 13, fontFamily: C.sans, outline: "none", marginBottom: 8,
+                      boxSizing: "border-box",
+                    }}
+                  />
+                  <textarea
+                    placeholder="Notes for the lab (optional) — e.g. target insertion date, specific concerns, antagonist details"
+                    value={labNotes}
+                    onChange={(e) => setLabNotes(e.target.value)}
+                    rows={2}
+                    style={{
+                      width: "100%", padding: "10px 12px", borderRadius: 7,
+                      border: `1px solid ${C.border}`, background: C.surface2, color: C.ink,
+                      fontSize: 13, fontFamily: C.sans, outline: "none", resize: "vertical",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+
+                {/* Status message */}
+                {exportStatus && (
+                  <div style={{
+                    padding: "12px 18px",
+                    borderTop: `1px solid ${C.borderSoft}`,
+                    background: exportStatus.kind === 'error' ? C.red + "15" : C.teal + "12",
+                    color: exportStatus.kind === 'error' ? C.red : C.teal,
+                    fontSize: 13, lineHeight: 1.5,
+                  }}>
+                    {exportStatus.kind === 'error' ? '⚠ ' : '✓ '}{exportStatus.message}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
