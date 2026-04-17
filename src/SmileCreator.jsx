@@ -184,6 +184,7 @@ export default function SmileCreator({ navigate, activePatient }) {
   const [teeth, setTeeth] = useState([]);  // generated tooth data
   const [selectedTooth, setSelectedTooth] = useState(null);
   const [toothDragOffset, setToothDragOffset] = useState(null);
+  const [activeHandle, setActiveHandle] = useState(null);
   const [showPhoto, setShowPhoto] = useState(true);
   const [showBefore, setShowBefore] = useState(false);
 
@@ -514,6 +515,59 @@ export default function SmileCreator({ navigate, activePatient }) {
         ctx.textBaseline = 'middle';
         ctx.fillText(`${tooth.num}`, 0, 0);
 
+        // Selection handles (drawn in tooth local coord frame — already rotated)
+        if (isSelected) {
+          // Bounding frame (thin dashed to show the handle grid)
+          ctx.save();
+          ctx.setLineDash([3, 3]);
+          ctx.strokeStyle = C.teal;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(-cW/2, -cH/2, cW, cH);
+          ctx.restore();
+
+          // Rotation handle arm — line from top edge up to handle
+          ctx.strokeStyle = C.teal;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(0, -cH/2);
+          ctx.lineTo(0, -cH * 0.75);
+          ctx.stroke();
+
+          // Draw 4 corner handles + rotate handle
+          const handles = [
+            { x: -cW/2, y: -cH/2, label: 'NW' },
+            { x: +cW/2, y: -cH/2, label: 'NE' },
+            { x: -cW/2, y: +cH/2, label: 'SW' },
+            { x: +cW/2, y: +cH/2, label: 'SE' },
+          ];
+          handles.forEach(h => {
+            // White ring + teal center (visible on any background)
+            ctx.beginPath();
+            ctx.arc(h.x, h.y, 6, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(h.x, h.y, 4.5, 0, Math.PI * 2);
+            ctx.fillStyle = C.teal;
+            ctx.fill();
+          });
+          // Rotate handle — circular arrow icon
+          ctx.beginPath();
+          ctx.arc(0, -cH * 0.75, 7, 0, Math.PI * 2);
+          ctx.fillStyle = '#ffffff';
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(0, -cH * 0.75, 5, 0, Math.PI * 2);
+          ctx.fillStyle = C.amber;
+          ctx.fill();
+          // Small arc inside to suggest rotation
+          ctx.beginPath();
+          ctx.arc(0, -cH * 0.75, 2.5, -Math.PI * 0.3, Math.PI * 1.3);
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.2;
+          ctx.stroke();
+        }
+
         ctx.restore();
       });
     }
@@ -561,6 +615,40 @@ export default function SmileCreator({ navigate, activePatient }) {
     return null;
   };
 
+  // Hit-test the handles on the currently-selected tooth.
+  // Returns 'nw' | 'ne' | 'sw' | 'se' | 'rotate' | null
+  // Handles are positioned in tooth local space (same frame as outline), then
+  // transformed to canvas coords via tooth rotation + cx/cy.
+  const hitTestHandle = (cx, cy) => {
+    if (selectedTooth === null) return null;
+    const tooth = teeth.find(t => t.num === selectedTooth);
+    if (!tooth) return null;
+    const cPos = imageToCanvas(tooth.cx, tooth.cy);
+    const cW = tooth.width * transform.scale;
+    const cH = tooth.height * transform.scale;
+
+    // Handle positions in tooth local space (normalized corners at ±0.5, rotate handle above)
+    const handleSpecs = [
+      { id: 'nw',     lx: -0.5, ly: -0.5 },
+      { id: 'ne',     lx: +0.5, ly: -0.5 },
+      { id: 'sw',     lx: -0.5, ly: +0.5 },
+      { id: 'se',     lx: +0.5, ly: +0.5 },
+      { id: 'rotate', lx:  0.0, ly: -0.75 },   // positioned above incisal edge
+    ];
+
+    for (const h of handleSpecs) {
+      // Convert local → canvas
+      const hx = h.lx * cW;
+      const hy = h.ly * cH;
+      const cosR = Math.cos(tooth.rotation);
+      const sinR = Math.sin(tooth.rotation);
+      const wx = cPos.x + hx * cosR - hy * sinR;
+      const wy = cPos.y + hx * sinR + hy * cosR;
+      if (Math.hypot(cx - wx, cy - wy) < 11) return h.id;
+    }
+    return null;
+  };
+
   const handleMouseDown = (e) => {
     if (!transform) return;
     const { x: cx, y: cy } = getCanvasPoint(e);
@@ -579,14 +667,34 @@ export default function SmileCreator({ navigate, activePatient }) {
       return;
     }
 
-    // Drag existing smile curve control point
+    // PRIORITY 1 — handles on selected tooth (they sit on top of everything)
+    const handle = hitTestHandle(cx, cy);
+    if (handle !== null) {
+      const tooth = teeth.find(t => t.num === selectedTooth);
+      if (tooth) {
+        // Save starting state for the drag — needed for delta calculations
+        setActiveHandle({
+          type: handle,
+          startCanvasX: cx,
+          startCanvasY: cy,
+          startWidth: tooth.width,
+          startHeight: tooth.height,
+          startRotation: tooth.rotation,
+          startCx: tooth.cx,
+          startCy: tooth.cy,
+        });
+      }
+      return;
+    }
+
+    // PRIORITY 2 — drag smile curve control point
     const curveIdx = hitTestCurvePoints(cx, cy);
     if (curveIdx >= 0) {
       setCurveDragIdx(curveIdx);
       return;
     }
 
-    // Hit test teeth
+    // PRIORITY 3 — click a tooth (select + start dragging body)
     const toothNum = hitTestTooth(cx, cy);
     if (toothNum !== null) {
       setSelectedTooth(toothNum);
@@ -605,6 +713,71 @@ export default function SmileCreator({ navigate, activePatient }) {
   const handleMouseMove = (e) => {
     if (!transform) return;
     const { x: cx, y: cy } = getCanvasPoint(e);
+
+    // Handle drag takes priority — it determines resize/rotate behavior
+    if (activeHandle && selectedTooth !== null) {
+      const a = activeHandle;
+      const tooth = teeth.find(t => t.num === selectedTooth);
+      if (!tooth) return;
+
+      if (a.type === 'rotate') {
+        // Angle from tooth center to current pointer, minus angle at drag start
+        const cPos = imageToCanvas(a.startCx, a.startCy);
+        const startAngle = Math.atan2(a.startCanvasY - cPos.y, a.startCanvasX - cPos.x);
+        const currentAngle = Math.atan2(cy - cPos.y, cx - cPos.x);
+        const deltaAngle = currentAngle - startAngle;
+        setTeeth(ts => ts.map(t => t.num === selectedTooth ?
+          { ...t, rotation: a.startRotation + deltaAngle } : t));
+        return;
+      }
+
+      // Corner resize — scale based on projection onto the tooth's local axes
+      // Transform canvas delta into tooth-local delta
+      const cPos = imageToCanvas(a.startCx, a.startCy);
+      const dxStart = a.startCanvasX - cPos.x;
+      const dyStart = a.startCanvasY - cPos.y;
+      const dxNow = cx - cPos.x;
+      const dyNow = cy - cPos.y;
+      const cosR = Math.cos(-a.startRotation);
+      const sinR = Math.sin(-a.startRotation);
+      // Local coords (in canvas pixels, rotated to tooth frame)
+      const lxStart = dxStart * cosR - dyStart * sinR;
+      const lyStart = dxStart * sinR + dyStart * cosR;
+      const lxNow = dxNow * cosR - dyNow * sinR;
+      const lyNow = dxNow * sinR + dyNow * cosR;
+
+      // Starting handle position in canvas pixels (tooth-local)
+      const startLocalX = a.type.endsWith('e') ? +a.startWidth * transform.scale / 2
+                                               : -a.startWidth * transform.scale / 2;
+      const startLocalY = a.type.startsWith('n') ? -a.startHeight * transform.scale / 2
+                                                 : +a.startHeight * transform.scale / 2;
+      // New half-widths/heights based on where the pointer is in tooth local
+      let newHalfW = Math.abs(lxNow);
+      let newHalfH = Math.abs(lyNow);
+      // Enforce minimums (don't collapse tooth to zero)
+      newHalfW = Math.max(newHalfW, 4);
+      newHalfH = Math.max(newHalfH, 4);
+      const newWidth  = (newHalfW * 2) / transform.scale;
+      const newHeight = (newHalfH * 2) / transform.scale;
+
+      // Holding Shift locks aspect ratio (proportional scale from the tooth's original aspect)
+      let finalW = newWidth, finalH = newHeight;
+      if (e.shiftKey) {
+        const startAspect = a.startWidth / a.startHeight;
+        // Use the larger change as the driver
+        const widthChange = Math.abs(newWidth - a.startWidth);
+        const heightChange = Math.abs(newHeight - a.startHeight);
+        if (widthChange > heightChange) {
+          finalH = newWidth / startAspect;
+        } else {
+          finalW = newHeight * startAspect;
+        }
+      }
+
+      setTeeth(ts => ts.map(t => t.num === selectedTooth ?
+        { ...t, width: finalW, height: finalH } : t));
+      return;
+    }
 
     if (curveDragIdx !== null && smileCurve) {
       const imgPt = canvasToImage(cx, cy);
@@ -625,6 +798,7 @@ export default function SmileCreator({ navigate, activePatient }) {
   const handleMouseUp = () => {
     setCurveDragIdx(null);
     setToothDragOffset(null);
+    setActiveHandle(null);
   };
 
   // Pulse animation loop — keeps ghost dots pulsing while placing the smile curve
@@ -644,9 +818,15 @@ export default function SmileCreator({ navigate, activePatient }) {
   // Mouse cursor style
   const cursor = useMemo(() => {
     if (step === 2 && !smileCurve) return 'crosshair';
+    if (activeHandle) {
+      if (activeHandle.type === 'rotate') return 'grabbing';
+      // NW/SE diagonal vs NE/SW diagonal
+      if (activeHandle.type === 'nw' || activeHandle.type === 'se') return 'nwse-resize';
+      if (activeHandle.type === 'ne' || activeHandle.type === 'sw') return 'nesw-resize';
+    }
     if (curveDragIdx !== null || toothDragOffset) return 'grabbing';
     return 'default';
-  }, [step, smileCurve, curveDragIdx, toothDragOffset]);
+  }, [step, smileCurve, curveDragIdx, toothDragOffset, activeHandle]);
 
   // ── Actions ───────────────────────────────────────────────────
   const resetSmileCurve = () => {
@@ -988,9 +1168,13 @@ export default function SmileCreator({ navigate, activePatient }) {
                   <div style={{ display: "flex", gap: 14, fontSize: 12, color: C.muted }}>
                     <span>W <span style={{ color: C.ink, fontFamily: C.font }}>{(selectedToothData.width / (transform?.scale || 1)).toFixed(0)}</span></span>
                     <span>H <span style={{ color: C.ink, fontFamily: C.font }}>{(selectedToothData.height / (transform?.scale || 1)).toFixed(0)}</span></span>
+                    <span>∠ <span style={{ color: C.ink, fontFamily: C.font }}>{(selectedToothData.rotation * 180 / Math.PI).toFixed(0)}°</span></span>
                   </div>
-                  <div style={{ marginTop: 10, fontSize: 11, color: C.muted, lineHeight: 1.5 }}>
-                    Drag to move · <kbd style={{ padding: "1px 5px", background: C.surface2, borderRadius: 3, fontFamily: C.font, fontSize: 10, border: `1px solid ${C.border}`, color: C.ink }}>DEL</kbd> to remove
+                  <div style={{ marginTop: 10, fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
+                    <div>• Drag body to <strong style={{color:C.ink}}>move</strong></div>
+                    <div>• Drag <span style={{ color: C.teal, fontWeight: 700 }}>●</span> corner to <strong style={{color:C.ink}}>resize</strong> (hold <kbd style={{ padding: "1px 5px", background: C.surface2, borderRadius: 3, fontFamily: C.font, fontSize: 10, border: `1px solid ${C.border}`, color: C.ink }}>⇧</kbd> to keep ratio)</div>
+                    <div>• Drag <span style={{ color: C.amber, fontWeight: 700 }}>●</span> top handle to <strong style={{color:C.ink}}>rotate</strong></div>
+                    <div>• <kbd style={{ padding: "1px 5px", background: C.surface2, borderRadius: 3, fontFamily: C.font, fontSize: 10, border: `1px solid ${C.border}`, color: C.ink }}>DEL</kbd> removes tooth · <kbd style={{ padding: "1px 5px", background: C.surface2, borderRadius: 3, fontFamily: C.font, fontSize: 10, border: `1px solid ${C.border}`, color: C.ink }}>ESC</kbd> deselects</div>
                   </div>
                 </div>
               )}
