@@ -1,5 +1,8 @@
 // Dental radiograph analyzer — Claude Sonnet 4 vision + radiologist-grade prompt
 // Designed to PREVENT hallucinations (e.g. seeing implants that aren't there)
+//
+// v2: Pearl-style annotation overlays — each finding now carries an optional
+// normalized bbox { x, y, width, height } in 0–1 coords for SVG overlay rendering.
 
 export const RADIOGRAPH_TYPES = {
   'panoramic':   { label: 'Panoramic (PAN)',     desc: 'Full maxillofacial overview' },
@@ -9,6 +12,29 @@ export const RADIOGRAPH_TYPES = {
   'occlusal':    { label: 'Occlusal',            desc: 'Floor of mouth, palatal' },
   'cbct-slice':  { label: 'CBCT Slice',          desc: 'Single cross-section' },
   'cbct-3d':     { label: 'CBCT 3D Render',      desc: 'Volumetric reconstruction' },
+};
+
+// Color palette for bbox overlays — keep in sync with AnnotatedRadiograph.jsx
+export const FINDING_COLORS = {
+  caries:            '#ef4444', // red
+  restoration:       '#3b82f6', // blue
+  crown:             '#06b6d4', // cyan
+  root_canal:        '#14b8a6', // teal
+  implant:           '#84cc16', // lime
+  periapical_lesion: '#a855f7', // purple
+  bone_loss:         '#f97316', // orange
+  pathology:         '#ec4899', // pink
+};
+
+export const FINDING_LABELS = {
+  caries:            'Caries',
+  restoration:       'Restoration',
+  crown:             'Crown',
+  root_canal:        'Root Canal',
+  implant:           'Implant',
+  periapical_lesion: 'Periapical Lesion',
+  bone_loss:         'Bone Loss',
+  pathology:         'Pathology',
 };
 
 // Radiologist-grade system prompt — strict anti-hallucination
@@ -57,6 +83,12 @@ ABSOLUTE RULES — VIOLATION INVALIDATES THE REPORT
 8. **DO NOT DIAGNOSE CARIES WITH CERTAINTY ON PANORAMIC.** Panoramic radiographs are inadequate for definitive caries diagnosis — always defer to bitewings for interproximal caries.
 
 9. **SELF-VERIFICATION BEFORE REPORTING.** Before adding any tooth-specific finding to your report, ask yourself: "Can I actually see this tooth number in the image?" If no, do not report on it. "Can I verify the criteria for the restoration type I'm reporting?" If no, downgrade to lower specificity or omit.
+
+10. **BOUNDING BOXES — NORMALIZED AND TIGHT.** For every tooth-specific finding (restorations, caries, periapical lesions, implants, root canals, pathology) you MUST include a \`bbox\` object with normalized coordinates:
+    - \`x\`, \`y\` = top-left corner as a fraction of image width/height (0.0–1.0)
+    - \`width\`, \`height\` = box size as a fraction of image width/height (0.0–1.0)
+    - (0,0) is top-left of the image, (1,1) is bottom-right
+    The box should be tight around the finding itself — not the whole tooth, unless the finding IS the whole tooth (e.g. missing tooth, impaction, full crown). If you genuinely cannot localize a finding spatially, omit the bbox field for that item rather than guessing. Be conservative — a wrong box is worse than no box.
 
 ═══════════════════════════════════════════════════════════════════
 SYSTEMATIC READING PROTOCOL (applied in order)
@@ -121,31 +153,42 @@ OUTPUT FORMAT — strict JSON only, no markdown, no preamble
   "implants": {
     "present": false,
     "count": 0,
-    "locations": [],
+    "locations": [
+      {"tooth": "#N", "bbox": {"x": 0.0, "y": 0.0, "width": 0.0, "height": 0.0}, "notes": ""}
+    ],
     "confidence": "high|medium|low|not_applicable"
   },
   "endodontic_treatment": {
-    "teeth": [],
+    "teeth": [
+      {"tooth": "#N", "bbox": {"x": 0.0, "y": 0.0, "width": 0.0, "height": 0.0}, "quality": "adequate|short|overfilled|voids"}
+    ],
     "quality_notes": ""
   },
   "existing_restorations": [
-    {"tooth": "#N", "type": "crown|amalgam|composite|post-core|bridge-retainer|inlay-onlay|large-restoration-type-unclear", "surfaces": "O|MO|DO|MOD|etc", "confidence": "high|medium|low", "reasoning": "brief note on what specifically makes you identify it as this type — e.g., 'full coronal coverage to CEJ with uniform density' for crown"}
+    {"tooth": "#N", "type": "crown|amalgam|composite|post-core|bridge-retainer|inlay-onlay|large-restoration-type-unclear", "surfaces": "O|MO|DO|MOD|etc", "bbox": {"x": 0.0, "y": 0.0, "width": 0.0, "height": 0.0}, "confidence": "high|medium|low", "reasoning": "brief note on what specifically makes you identify it as this type — e.g., 'full coronal coverage to CEJ with uniform density' for crown"}
   ],
   "caries": {
-    "definitive": [],
-    "suspicious": [],
+    "definitive": [
+      {"tooth": "#N", "surface": "M|D|O|B|L|MO|DO|etc", "bbox": {"x": 0.0, "y": 0.0, "width": 0.0, "height": 0.0}, "depth": "enamel|dentin|pulpal"}
+    ],
+    "suspicious": [
+      {"tooth": "#N", "surface": "...", "bbox": {"x": 0.0, "y": 0.0, "width": 0.0, "height": 0.0}, "note": "reason for suspicion"}
+    ],
     "note": "If panoramic, note caries cannot be definitively diagnosed"
   },
   "periapical_findings": [
-    {"tooth": "#N", "finding": "description", "size_mm": "if measurable", "confidence": "high|medium|low"}
+    {"tooth": "#N", "finding": "description", "size_mm": "if measurable", "bbox": {"x": 0.0, "y": 0.0, "width": 0.0, "height": 0.0}, "confidence": "high|medium|low"}
   ],
   "periodontal_status": {
     "bone_loss": "none|mild|moderate|severe|localized (specify teeth)",
     "pattern": "horizontal|vertical|mixed",
-    "crestal_bone_level": "description"
+    "crestal_bone_level": "description",
+    "regions": [
+      {"location": "description", "bbox": {"x": 0.0, "y": 0.0, "width": 0.0, "height": 0.0}, "severity": "mild|moderate|severe"}
+    ]
   },
   "pathology_findings": [
-    {"location": "description", "finding": "description", "differential": ["list"], "confidence": "high|medium|low"}
+    {"location": "description", "finding": "description", "differential": ["list"], "bbox": {"x": 0.0, "y": 0.0, "width": 0.0, "height": 0.0}, "confidence": "high|medium|low"}
   ],
   "anatomical_notes": [
     "list any relevant anatomical observations (sinus, IAN, etc.)"
@@ -158,6 +201,8 @@ OUTPUT FORMAT — strict JSON only, no markdown, no preamble
   ],
   "disclaimer": "Radiographic interpretation must be correlated with clinical examination. This AI-assisted analysis does not replace professional judgment."
 }
+
+Important bbox reminder: Every tooth-specific finding SHOULD include a \`bbox\` object. If you cannot localize a finding precisely, omit the bbox field rather than guessing.
 
 If the image cannot be interpreted as a dental radiograph, return:
 {
@@ -189,4 +234,131 @@ export async function analyzeRadiograph(imageBase64, mimeType, userHint = "") {
   } catch (e) {
     return { ok: false, error: "Parse error", raw: clean };
   }
+}
+
+// -------------------------------------------------------------------------
+// Helper: flatten the rich result schema into a unified list of renderable
+// boxes for AnnotatedRadiograph.jsx. Skips items without a valid bbox.
+// -------------------------------------------------------------------------
+const validBbox = (b) =>
+  b && typeof b.x === 'number' && typeof b.y === 'number' &&
+  typeof b.width === 'number' && typeof b.height === 'number' &&
+  b.width > 0 && b.height > 0;
+
+const conf = (v) => {
+  if (typeof v === 'number') return v;
+  if (v === 'high') return 0.9;
+  if (v === 'medium') return 0.7;
+  if (v === 'low') return 0.5;
+  return 0.75;
+};
+
+export function flattenFindings(result) {
+  if (!result || typeof result !== 'object') return [];
+  const out = [];
+
+  // Restorations — split crowns into their own category for color-coding
+  (result.existing_restorations || []).forEach((r) => {
+    if (!validBbox(r.bbox)) return;
+    const category = r.type === 'crown' ? 'crown' : 'restoration';
+    out.push({
+      category,
+      tooth: r.tooth,
+      bbox: r.bbox,
+      confidence: conf(r.confidence),
+      description: `${r.type}${r.surfaces ? ` (${r.surfaces})` : ''}${r.reasoning ? ` — ${r.reasoning}` : ''}`,
+      severity: 'n/a',
+    });
+  });
+
+  // Caries — definitive + suspicious
+  (result.caries?.definitive || []).forEach((c) => {
+    if (!validBbox(c.bbox)) return;
+    out.push({
+      category: 'caries',
+      tooth: c.tooth,
+      bbox: c.bbox,
+      confidence: 0.9,
+      description: `Caries${c.surface ? ` on ${c.surface}` : ''}${c.depth ? ` (${c.depth})` : ''}`,
+      severity: c.depth === 'pulpal' ? 'severe' : c.depth === 'dentin' ? 'moderate' : 'mild',
+    });
+  });
+  (result.caries?.suspicious || []).forEach((c) => {
+    if (!validBbox(c.bbox)) return;
+    out.push({
+      category: 'caries',
+      tooth: c.tooth,
+      bbox: c.bbox,
+      confidence: 0.5,
+      description: `Suspicious for caries${c.surface ? ` on ${c.surface}` : ''}${c.note ? ` — ${c.note}` : ''}`,
+      severity: 'mild',
+    });
+  });
+
+  // Periapical
+  (result.periapical_findings || []).forEach((p) => {
+    if (!validBbox(p.bbox)) return;
+    out.push({
+      category: 'periapical_lesion',
+      tooth: p.tooth,
+      bbox: p.bbox,
+      confidence: conf(p.confidence),
+      description: `${p.finding}${p.size_mm ? ` (${p.size_mm})` : ''}`,
+      severity: 'moderate',
+    });
+  });
+
+  // Implants
+  (result.implants?.locations || []).forEach((i) => {
+    if (!validBbox(i.bbox)) return;
+    out.push({
+      category: 'implant',
+      tooth: i.tooth,
+      bbox: i.bbox,
+      confidence: conf(result.implants?.confidence),
+      description: i.notes || 'Implant',
+      severity: 'n/a',
+    });
+  });
+
+  // Endo
+  (result.endodontic_treatment?.teeth || []).forEach((e) => {
+    if (!validBbox(e.bbox)) return;
+    out.push({
+      category: 'root_canal',
+      tooth: e.tooth,
+      bbox: e.bbox,
+      confidence: 0.85,
+      description: `Root canal${e.quality ? ` (${e.quality})` : ''}`,
+      severity: 'n/a',
+    });
+  });
+
+  // Bone loss regions
+  (result.periodontal_status?.regions || []).forEach((r) => {
+    if (!validBbox(r.bbox)) return;
+    out.push({
+      category: 'bone_loss',
+      tooth: '',
+      bbox: r.bbox,
+      confidence: 0.8,
+      description: `${r.location}${r.severity ? ` — ${r.severity}` : ''}`,
+      severity: r.severity || 'moderate',
+    });
+  });
+
+  // Pathology
+  (result.pathology_findings || []).forEach((p) => {
+    if (!validBbox(p.bbox)) return;
+    out.push({
+      category: 'pathology',
+      tooth: '',
+      bbox: p.bbox,
+      confidence: conf(p.confidence),
+      description: `${p.finding}${p.differential?.length ? ` — DDx: ${p.differential.join(', ')}` : ''}`,
+      severity: 'severe',
+    });
+  });
+
+  return out;
 }
