@@ -1133,23 +1133,21 @@ export default function SmileCreator({ navigate, activePatient }) {
     }
     try { localStorage.setItem('restora-lab-email', labEmail); } catch {}
 
-    // Build + download BOTH files (PNG visual + JSON handoff)
+    // Build assets
     const { blob: pngBlob, filename: pngName } = await exportSideBySidePNG();
+    if (!pngBlob) {
+      setExportStatus({ kind: 'error', message: 'Failed to generate PNG' });
+      return;
+    }
     const patientSlug = (activePatient?.name || 'patient').toLowerCase().replace(/\s+/g, '-');
     const dateSlug = new Date().toISOString().slice(0, 10);
     const jsonName = `lab-handoff-${patientSlug}-${dateSlug}.json`;
-    const jsonBlob = new Blob(
-      [JSON.stringify(buildLabPackage(), null, 2)],
-      { type: 'application/json' }
-    );
+    const labPackage = buildLabPackage();
+    const jsonString = JSON.stringify(labPackage, null, 2);
 
-    downloadBlob(pngBlob, pngName);
-    setTimeout(() => downloadBlob(jsonBlob, jsonName), 200);  // stagger so both downloads register
-
-    // Open a mail draft addressed to the lab with the design parameters
-    const subject = encodeURIComponent(`Smile design — ${activePatient?.name || 'patient'} (${activePatient?.teeth || ''})`);
+    const subject = `Smile design — ${activePatient?.name || 'patient'} (${activePatient?.teeth || ''})`;
     const libLabel = { dannydesigner5: 'Ovoid', dannydesigner4: 'Square', g01: 'Balanced', g02: 'Natural' }[library] || library;
-    const bodyLines = [
+    const bodyText = [
       `Attached: smile design visualization (PNG) and lab handoff package (JSON).`,
       ``,
       `Patient: ${activePatient?.name || ''}`,
@@ -1160,19 +1158,71 @@ export default function SmileCreator({ navigate, activePatient }) {
       `  Shade: ${shade}`,
       `  Proportion: ${PROPORTIONS[proportion]?.label || proportion}`,
       ``,
-      labNotes ? `Notes: ${labNotes}` : '',
-      ``,
+      ...(labNotes ? [`Notes: ${labNotes}`, ``] : []),
       `Please confirm receipt and turnaround estimate.`,
       `—`,
       `Sent from Restora`,
-    ].filter(Boolean).join('\n');
-    const body = encodeURIComponent(bodyLines);
-    // mailto will open the default mail client with a pre-filled draft
-    window.location.href = `mailto:${labEmail}?subject=${subject}&body=${body}`;
+    ].join('\n');
+
+    // Primary path: call /api/send-to-lab to send via Resend
+    setExportStatus({ kind: 'info', message: 'Sending to lab…' });
+    try {
+      // Convert PNG blob to base64
+      const pngBase64 = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result.split(',')[1]);
+        r.onerror = () => reject(new Error('Failed to read PNG'));
+        r.readAsDataURL(pngBlob);
+      });
+
+      const resp = await fetch('/api/send-to-lab', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: labEmail,
+          subject,
+          bodyText,
+          pngBase64,
+          pngFilename: pngName,
+          jsonPayload: labPackage,
+          jsonFilename: jsonName,
+        }),
+      });
+      const result = await resp.json();
+
+      if (resp.ok && result.ok) {
+        setExportStatus({
+          kind: 'success',
+          message: `Email sent to ${labEmail} with both files attached.`,
+        });
+        return;
+      }
+
+      // Fall through to mailto fallback on server error (no API key, quota, etc.)
+      if (result.code === 'NO_API_KEY') {
+        // Expected — backend isn't configured. Fall back silently.
+      } else {
+        console.warn('send-to-lab error:', result);
+      }
+    } catch (err) {
+      console.warn('send-to-lab network error:', err);
+      // fall through to mailto
+    }
+
+    // Fallback path: download both files + open mailto draft
+    downloadBlob(pngBlob, pngName);
+    const jsonBlob = new Blob([jsonString], { type: 'application/json' });
+    setTimeout(() => downloadBlob(jsonBlob, jsonName), 200);
+
+    const mailtoA = document.createElement('a');
+    mailtoA.href = `mailto:${labEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`;
+    document.body.appendChild(mailtoA);
+    mailtoA.click();
+    document.body.removeChild(mailtoA);
 
     setExportStatus({
       kind: 'success',
-      message: `2 files downloaded. Attach them to the email draft that just opened.`,
+      message: `Files downloaded · Email draft opened · Attach the 2 files and hit Send.`,
     });
   };
 
@@ -1193,12 +1243,21 @@ export default function SmileCreator({ navigate, activePatient }) {
   };
 
   const handleKeyDown = useCallback((e) => {
-    if (e.key === 'Escape') setSelectedTooth(null);
+    if (e.key === 'Escape') {
+      if (exportOpen) { setExportOpen(false); return; }
+      setSelectedTooth(null);
+    }
     if (e.key === 'Delete' && selectedTooth !== null) {
       setTeeth(ts => ts.filter(t => t.num !== selectedTooth));
       setSelectedTooth(null);
     }
-  }, [selectedTooth]);
+    // Cmd/Ctrl+E → open Export dialog (only when there's something to export)
+    if ((e.metaKey || e.ctrlKey) && e.key === 'e' && teeth.length > 0) {
+      e.preventDefault();
+      setExportStatus(null);
+      setExportOpen(true);
+    }
+  }, [selectedTooth, teeth.length, exportOpen]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -1463,11 +1522,11 @@ export default function SmileCreator({ navigate, activePatient }) {
                   <div style={{
                     padding: "12px 18px",
                     borderTop: `1px solid ${C.borderSoft}`,
-                    background: exportStatus.kind === 'error' ? C.red + "15" : C.teal + "12",
-                    color: exportStatus.kind === 'error' ? C.red : C.teal,
+                    background: exportStatus.kind === 'error' ? C.red + "15" : exportStatus.kind === 'info' ? C.amber + "15" : C.teal + "12",
+                    color: exportStatus.kind === 'error' ? C.red : exportStatus.kind === 'info' ? C.amber : C.teal,
                     fontSize: 13, lineHeight: 1.5,
                   }}>
-                    {exportStatus.kind === 'error' ? '⚠ ' : '✓ '}{exportStatus.message}
+                    {exportStatus.kind === 'error' ? '⚠ ' : exportStatus.kind === 'info' ? '⋯ ' : '✓ '}{exportStatus.message}
                   </div>
                 )}
               </div>
