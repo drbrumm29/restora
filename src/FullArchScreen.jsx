@@ -109,7 +109,7 @@ export default function FullArchScreen({ navigate, activePatient }) {
     <div style={{ flex:1, overflow:"auto", background:C.bg, color:C.ink, fontFamily:C.sans }}>
       {/* Header */}
       <div style={{ padding:"20px 24px", borderBottom:`1px solid ${C.border}` }}>
-        <div style={{ fontSize:22, fontWeight:800, letterSpacing:"-.02em" }}>Full Arch Design</div>
+        <div style={{ fontSize:28, fontWeight:700, letterSpacing:"-.02em" }}>Full Arch</div>
         <div style={{ fontSize:13, color:C.muted, marginTop:3 }}>
           {activePatient ? `${activePatient.name}` : "Prosthetic planning & material selection"}
         </div>

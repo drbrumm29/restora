@@ -425,6 +425,21 @@ export default function SmileCreator({ navigate, activePatient }) {
         transform.offsetX, transform.offsetY,
         transform.imgW, transform.imgH
       );
+
+      // Mask photographer burn-in labels at the bottom of retracted photos.
+      // Carrie's retracted_full.jpg and retracted_labeled.jpg both have
+      // "Name/Date: Pappas..." + "HPC:" text baked into the bottom-left ~60%
+      // of the image. Cover that strip with the app background so the text
+      // doesn't ride along into exports or consult presentations. The right
+      // ~40% (ruler with cm/inches) is deliberately preserved for DSD
+      // calibration. Safe for other photos because the masked rectangle sits
+      // over the chin/background area, not the teeth.
+      if (/retracted/i.test(photoUrl || '')) {
+        const maskH = transform.imgH * 0.078;
+        const maskW = transform.imgW * 0.6;
+        ctx.fillStyle = C.bg;
+        ctx.fillRect(transform.offsetX, transform.offsetY + transform.imgH - maskH, maskW, maskH);
+      }
     }
 
     // Ghost guide: show where next click should land, based on typical smile photo framing.
@@ -523,20 +538,23 @@ export default function SmileCreator({ navigate, activePatient }) {
         ctx.fill();
         ctx.restore();
       };
-      // Midline (vertical line through full image height)
+      // DSD-standard reference-line color coding:
+      //   midline = pink (facial midline)
+      //   eyes    = blue (interpupillary)
+      //   lip line = amber/orange (maxillary lip line)
+      // Matches Digital Smile Design / Smilefy conventions — dentists learn
+      // these colors in DSD training and read the overlay faster.
       if (refLines.midline.enabled) {
         const mx = refLines.midline.x ?? photoDim.w / 2;
-        drawRefLine('#f59e0b', mx, 0, mx, photoDim.h, 'Midline');
+        drawRefLine('#ec4899', mx, 0, mx, photoDim.h, 'Midline');
       }
-      // Interpupillary (horizontal)
       if (refLines.interpupillary.enabled) {
         const ly = refLines.interpupillary.y ?? photoDim.h * 0.35;
-        drawRefLine('#0abab5', 0, ly, photoDim.w, ly, 'Eyes');
+        drawRefLine('#3b82f6', 0, ly, photoDim.w, ly, 'Eyes');
       }
-      // Lip line (horizontal)
       if (refLines.lipLine.enabled) {
         const ly = refLines.lipLine.y ?? photoDim.h * 0.55;
-        drawRefLine('#ec4899', 0, ly, photoDim.w, ly, 'Lip line');
+        drawRefLine('#f59e0b', 0, ly, photoDim.w, ly, 'Lip line');
       }
     }
 
@@ -1437,7 +1455,7 @@ export default function SmileCreator({ navigate, activePatient }) {
       <div style={{ padding: "18px 28px", borderBottom: `1px solid ${C.border}`, background: C.surface, flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
           <div>
-            <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.02em", color: C.ink }}>
+            <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-.02em", color: C.ink }}>
               Smile Creator
             </div>
             <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>

@@ -999,11 +999,19 @@ function Dashboard({ navigate, setActivePatient, customPatients=[] }) {
     setActivePatient(p);
     navigate(target);
   }
+  // Clinical stats derived from patient case data — replaces opaque
+  // "Active / Ready / In-progress / Needed" labels with information a
+  // clinician actually wants at-a-glance: photos uploaded, scans loaded,
+  // cases with lab, and files still needed.
+  const photosCount = cases.reduce((n,c) => n + (c.photos?.length || 0), 0);
+  const scansCount  = cases.reduce((n,c) => n + (c.files?.filter(f => /\.stl$/i.test(f.name)).length || 0), 0);
+  const withLabCount = cases.filter(c => c.status === "In progress").length;
+  const filesNeededCount = cases.filter(c => c.status === "Files needed").length;
   const stats=[
     {label:"Active cases", value:String(cases.length), sub:"April 2026", color:C.teal},
-    {label:"Designs ready", value:String(cases.filter(c=>c.status==="Design ready").length), sub:"Awaiting export", color:C.green},
-    {label:"In progress", value:String(cases.filter(c=>c.status==="In progress").length), sub:"With lab", color:C.blue},
-    {label:"Files needed", value:String(cases.filter(c=>c.status==="Files needed").length), sub:"Action required", color:C.warn},
+    {label:"Photos on file", value:String(photosCount), sub:`across ${cases.length} patient${cases.length===1?'':'s'}`, color:C.green},
+    {label:"STL scans loaded", value:String(scansCount), sub:"ready to design", color:C.blue},
+    {label:"With lab", value:String(withLabCount), sub:filesNeededCount > 0 ? `${filesNeededCount} need files` : "on track", color:filesNeededCount > 0 ? C.warn : C.muted},
   ];
 
   // Pick a "current patient" for the hero CTA — the first active case if any
@@ -1013,7 +1021,7 @@ function Dashboard({ navigate, setActivePatient, customPatients=[] }) {
     <div style={{ flex:1,overflow:"auto",padding:isNarrow?"24px 18px 100px":"40px 48px",background:C.bg,color:C.ink,fontFamily:C.sans }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:14, marginBottom:10 }}>
         <div>
-          <div style={{ fontSize:isNarrow?28:40,fontWeight:800,letterSpacing:"-.03em",marginBottom:10 }}>Dashboard</div>
+          <div style={{ fontSize:isNarrow?28:36,fontWeight:700,letterSpacing:"-.02em",marginBottom:10 }}>Dashboard</div>
           <div style={{ fontSize:isNarrow?15:18,color:C.muted,marginBottom:0 }}>Active cases · April 2026</div>
         </div>
         <button onClick={()=>window.dispatchEvent(new CustomEvent('restora:open-new-patient'))}

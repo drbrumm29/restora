@@ -276,7 +276,7 @@ Restora`;
     <div style={{ flex:1, overflow:"auto", background:C.bg, color:C.ink, fontFamily:C.sans }}>
       {/* Header */}
       <div style={{ padding:"20px 24px", borderBottom:`1px solid ${C.border}` }}>
-        <div style={{ fontSize:22, fontWeight:800, letterSpacing:"-.02em" }}>Export Hub</div>
+        <div style={{ fontSize:28, fontWeight:700, letterSpacing:"-.02em" }}>Export</div>
         <div style={{ fontSize:13, color:C.muted, marginTop:3 }}>
           {patient ? `${patient.name} · ${patient.caseType || 'Case'}` : "No patient selected"}
         </div>

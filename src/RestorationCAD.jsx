@@ -1037,31 +1037,43 @@ export default function RestorationCAD({ navigate, activePatient }) {
       {/* Header bar */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 22px", borderBottom:`1px solid ${C.border}`, gap:14, flexWrap:"wrap", flexShrink:0 }}>
         <div>
-          <div style={{ fontSize:22, fontWeight:700, letterSpacing:"-.02em" }}>Scan Viewer</div>
+          <div style={{ fontSize:28, fontWeight:700, letterSpacing:"-.02em" }}>Scan Viewer</div>
           <div style={{ fontSize:13, color:C.muted, marginTop:2 }}>
             {patient?.name ? `${patient.name}${patient.teeth ? ' · ' + patient.teeth : ''}` : "No patient loaded"} · {stats.meshCount} mesh · {stats.triCount.toLocaleString()} tris
           </div>
         </div>
-        <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"center" }}>
-          <button onClick={()=>navigate && navigate('smile-creator')} style={{ padding:"10px 18px", borderRadius:10, background:C.teal, color:"white", border:"none", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:C.sans, boxShadow:`0 2px 8px ${C.teal}40`, letterSpacing:.1 }}>Design in Smile Creator →</button>
-          {/* Orientation flip controls — user can correct if auto-orient got it wrong */}
-          <div style={{ display:"flex", gap:4, padding:"4px", borderRadius:10, background:C.surface2, border:`1px solid ${C.border}` }}>
-            <span style={{ fontSize:11, color:C.muted, alignSelf:"center", padding:"0 8px", fontFamily:C.font, letterSpacing:1, fontWeight:700 }}>FLIP</span>
-            {['x','y','z'].map(axis => (
-              <button key={axis}
-                onClick={()=>setOrientFlip(f => ({ ...f, [axis]: !f[axis] }))}
-                title={axis === 'y' ? 'Flip upside-down / right-side-up' : axis === 'x' ? 'Mirror left-right' : 'Flip front-back'}
-                style={{
-                  width:34, height:30, borderRadius:6,
-                  background: orientFlip[axis] ? C.teal : 'transparent',
-                  color: orientFlip[axis] ? 'white' : C.ink,
-                  border:`1px solid ${orientFlip[axis] ? C.teal : C.borderSoft}`,
-                  fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:C.font, textTransform:"uppercase"
-                }}>{axis}</button>
-            ))}
+        {/* Scan Viewer header actions — split into two visual groups:
+            1. Viewport tools (FLIP + Wireframe) — quiet neutral controls grouped together
+            2. Progression (Export + Design in Smile Creator) — the two forward moves */}
+        <div style={{ display:"flex", gap:14, flexWrap:"wrap", alignItems:"center" }}>
+          {/* Viewport tools group */}
+          <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+            <div style={{ display:"flex", gap:4, padding:"4px", borderRadius:10, background:C.surface2, border:`1px solid ${C.border}` }}>
+              <span style={{ fontSize:10, color:C.muted, alignSelf:"center", padding:"0 8px", fontFamily:C.font, letterSpacing:1.5, fontWeight:600 }}>FLIP</span>
+              {['x','y','z'].map(axis => (
+                <button key={axis}
+                  onClick={()=>setOrientFlip(f => ({ ...f, [axis]: !f[axis] }))}
+                  title={axis === 'y' ? 'Flip upside-down / right-side-up' : axis === 'x' ? 'Mirror left-right' : 'Flip front-back'}
+                  style={{
+                    width:32, height:28, borderRadius:6,
+                    background: orientFlip[axis] ? C.teal : 'transparent',
+                    color: orientFlip[axis] ? 'white' : C.muted,
+                    border:`1px solid ${orientFlip[axis] ? C.teal : 'transparent'}`,
+                    fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:C.font, textTransform:"uppercase", transition:"all .15s"
+                  }}>{axis}</button>
+              ))}
+            </div>
+            <button onClick={()=>setWire(w=>!w)} style={{ padding:"9px 14px", borderRadius:10, background:wireframe?C.tealDim:"transparent", color:wireframe?C.teal:C.muted, border:`1px solid ${wireframe?C.teal+"60":C.border}`, fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:C.sans, letterSpacing:.1 }}>Wireframe{wireframe?" ✓":""}</button>
           </div>
-          <button onClick={()=>setWire(w=>!w)} style={{ padding:"10px 16px", borderRadius:8, background:wireframe?C.tealDim:C.surface2, color:wireframe?C.teal:C.muted, border:`1px solid ${wireframe?C.tealBorder:C.border}`, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:C.sans }}>{wireframe?"✓ Wireframe":"Wireframe"}</button>
-          <button onClick={exportDesign} disabled={meshes.length===0} style={{ padding:"10px 16px", borderRadius:8, background:meshes.length?C.teal:C.surface2, color:meshes.length?"white":C.muted, border:"none", fontSize:14, fontWeight:700, cursor:meshes.length?"pointer":"not-allowed", fontFamily:C.sans }}>⬇ Export Scan STL</button>
+
+          {/* Divider */}
+          <div style={{ width:1, height:28, background:C.border }} />
+
+          {/* Progression group */}
+          <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+            <button onClick={exportDesign} disabled={meshes.length===0} style={{ padding:"9px 14px", borderRadius:10, background:"transparent", color:meshes.length?C.ink:C.muted, border:`1px solid ${C.border}`, fontSize:13, fontWeight:500, cursor:meshes.length?"pointer":"not-allowed", fontFamily:C.sans, letterSpacing:.1 }}>Export STL</button>
+            <button onClick={()=>navigate && navigate('smile-creator')} style={{ padding:"10px 18px", borderRadius:10, background:C.teal, color:"white", border:"none", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:C.sans, boxShadow:`0 2px 8px ${C.teal}40`, letterSpacing:.1 }}>Design in Smile Creator →</button>
+          </div>
         </div>
       </div>
 
@@ -1399,8 +1411,8 @@ export default function RestorationCAD({ navigate, activePatient }) {
 
           {/* Footer actions */}
           <div style={{ padding:"16px 20px", borderTop:`1px solid ${C.border}`, display:"flex", flexDirection:"column", gap:10 }}>
-            <button onClick={()=>navigate && navigate('design-bridge')} style={{ padding:"13px", borderRadius:8, background:C.surface2, color:C.ink, border:`1px solid ${C.border}`, fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:C.sans }}>← Back to Design Bridge</button>
-            <button onClick={()=>navigate && navigate('export')} disabled={meshes.length===0} style={{ padding:"14px", borderRadius:8, background:meshes.length?C.teal:C.surface2, color:meshes.length?"white":C.muted, border:"none", fontSize:15, fontWeight:700, cursor:meshes.length?"pointer":"not-allowed", fontFamily:C.sans }}>Send to Export →</button>
+            <button onClick={()=>navigate && navigate('dashboard')} style={{ padding:"12px", borderRadius:10, background:"transparent", color:C.muted, border:`1px solid ${C.border}`, fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:C.sans }}>← Dashboard</button>
+            <button onClick={()=>navigate && navigate('export')} disabled={meshes.length===0} style={{ padding:"14px", borderRadius:10, background:meshes.length?C.teal:C.surface2, color:meshes.length?"white":C.muted, border:"none", fontSize:15, fontWeight:600, cursor:meshes.length?"pointer":"not-allowed", fontFamily:C.sans, letterSpacing:.1 }}>Send to Export →</button>
           </div>
         </div>
       </div>

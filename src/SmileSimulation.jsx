@@ -270,7 +270,7 @@ Return JSON only:
       {/* Header */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 22px", borderBottom:`1px solid ${C.border}`, gap:14, flexWrap:"wrap", flexShrink:0 }}>
         <div>
-          <div style={{ fontSize:22, fontWeight:800, letterSpacing:"-.02em" }}>Smile Simulation</div>
+          <div style={{ fontSize:28, fontWeight:700, letterSpacing:"-.02em" }}>Smile Simulation</div>
           <div style={{ fontSize:13, color:C.muted, marginTop:3 }}>
             {imageName ? `${imageName} · ${imgDims.w}×${imgDims.h}` : "Load a patient photo to begin"}
           </div>
