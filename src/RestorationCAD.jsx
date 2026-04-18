@@ -453,7 +453,7 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
       Object.values(meshObjectsRef.current).forEach(o => {
         o.position.set(-center.x, -center.y, -center.z);
       });
-      const teethBiasY = size.y * 0.15;  // lift teeth toward viewport center
+      const teethBiasY = size.y * 0.30;  // lift teeth toward viewport center
       rotateRef.current.centerOffset = { x:-center.x, y:-center.y + teethBiasY, z:-center.z };
       Object.values(meshObjectsRef.current).forEach(o => {
         o.position.set(-center.x, -center.y + teethBiasY, -center.z);
