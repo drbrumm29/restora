@@ -439,9 +439,9 @@ export default function SmileCreator({ navigate, activePatient }) {
       const imgOy = transform.offsetY;
       const ghostY = imgOy + imgH * 0.55;
       const ghosts = [
-        { x: imgOx + imgW * 0.38, label: 'Pt R', caption: 'Patient right canine incisal edge (#6 tip)' },
-        { x: imgOx + imgW * 0.50, label: 'M',    caption: 'Midline — between #8 and #9 incisal edges' },
-        { x: imgOx + imgW * 0.62, label: 'Pt L', caption: 'Patient left canine incisal edge (#11 tip)' },
+        { x: imgOx + imgW * 0.38, label: 'Pt R', caption: '#6 tip' },
+        { x: imgOx + imgW * 0.50, label: 'M',    caption: '#8 / #9 midline' },
+        { x: imgOx + imgW * 0.62, label: 'Pt L', caption: '#11 tip' },
       ];
       const nextIdx = placementBuffer.length;  // which ghost is "active"
 
@@ -485,7 +485,7 @@ export default function SmileCreator({ navigate, activePatient }) {
           // Shadow behind text for readability
           ctx.shadowColor = 'rgba(0,0,0,0.7)';
           ctx.shadowBlur = 8;
-          ctx.fillText(`Tap here: ${g.caption}`, g.x, ghostY + 40);
+          ctx.fillText(g.caption, g.x, ghostY + 30);
         }
         ctx.restore();
       });
@@ -1424,7 +1424,7 @@ export default function SmileCreator({ navigate, activePatient }) {
   if (!activePatient) {
     return (
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: C.bg, color: C.muted, flexDirection: "column", gap: 14, fontFamily: C.sans }}>
-        <div style={{ fontSize: 64 }}>😊</div>
+        <div style={{ width:72, height:72, borderRadius:"50%", background:`${C.teal}15`, border:`1.5px solid ${C.teal}40`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:32, color:C.teal, fontFamily:C.font, fontWeight:300 }}>○</div>
         <div style={{ fontSize: 20, color: C.ink, fontWeight: 700 }}>Select a patient to start Smile Creator</div>
         <div style={{ fontSize: 14 }}>Choose a patient on the Dashboard, then return here to design their new smile.</div>
       </div>

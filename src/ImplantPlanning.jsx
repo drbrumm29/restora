@@ -366,8 +366,8 @@ Return JSON only:
           {/* AI analysis */}
           <div style={{ padding:18 }}>
             <button onClick={runSafetyAnalysis} disabled={!image || analyzing}
-              style={{ width:"100%", padding:"14px", borderRadius:8, background:analyzing?C.surface2:C.red, color:analyzing?C.muted:"white", border:"none", fontSize:14, fontWeight:700, cursor:analyzing||!image?"wait":"pointer", fontFamily:C.sans, marginBottom:14 }}>
-              {analyzing ? "⚡ Analyzing safety..." : "🛡 Run Safety Analysis"}
+              style={{ width:"100%", padding:"14px", borderRadius:10, background:analyzing?C.surface2:C.teal, color:analyzing?C.muted:"white", border:"none", fontSize:14, fontWeight:600, cursor:analyzing||!image?"wait":"pointer", fontFamily:C.sans, marginBottom:14, letterSpacing:.1 }}>
+              {analyzing ? "Analyzing safety…" : "Run Safety Analysis"}
             </button>
 
             {report && (

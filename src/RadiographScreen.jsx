@@ -100,16 +100,17 @@ export default function RadiographScreen() {
       {/* Header */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
         <div>
-          <div style={{ fontSize:32, fontWeight:800, letterSpacing:"-.03em", marginBottom:6 }}>Radiograph Analysis</div>
-          <div style={{ fontSize:14, color:C.muted }}>AI-assisted dental radiology reading · Board-certified radiologist standard</div>
+          <div style={{ fontSize:32, fontWeight:700, letterSpacing:"-.02em", marginBottom:6 }}>X-ray Analysis</div>
+          <div style={{ fontSize:14, color:C.muted }}>AI-assisted radiograph reading to board-certified radiologist standard.</div>
         </div>
         {image && <button onClick={reset} style={{ padding:"10px 18px", borderRadius:8, fontSize:13, fontWeight:600, border:`1px solid ${C.border}`, background:"transparent", color:C.muted, cursor:"pointer", fontFamily:C.sans }}>↺ New analysis</button>}
       </div>
 
-      {/* Anti-hallucination disclaimer */}
-      <div style={{ padding:"10px 14px", borderRadius:7, background:C.amberDim, border:`1px solid ${C.amber}40`, marginBottom:24, fontSize:12, color:C.muted, lineHeight:1.6 }}>
-        <strong style={{ color:C.amber }}>Clinical use:</strong> AI-assisted analysis does not replace professional judgment. All findings must be correlated with clinical examination. The radiologist prompt is engineered to refuse speculation — if a finding is not clearly visible, the AI will say so rather than invent one.
-      </div>
+      {/* Anti-hallucination disclaimer — condensed with expandable detail */}
+      <details style={{ padding:"10px 14px", borderRadius:10, background:C.amberDim, border:`1px solid ${C.amber}40`, marginBottom:24, fontSize:12, color:C.muted, lineHeight:1.6 }}>
+        <summary style={{ cursor:"pointer", listStyle:"none", color:C.amber, fontWeight:600 }}>⚠ Clinical use — AI assists, does not replace clinical judgment</summary>
+        <div style={{ marginTop:8 }}>All findings must be correlated with clinical examination. The radiologist prompt is engineered to refuse speculation — if a finding is not clearly visible, the AI will say so rather than invent one.</div>
+      </details>
 
       {/* Upload stage */}
       {!image && (

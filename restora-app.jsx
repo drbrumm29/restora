@@ -1043,7 +1043,7 @@ function Dashboard({ navigate, setActivePatient, customPatients=[] }) {
           onMouseEnter={e=>{ e.currentTarget.style.borderColor = C.teal; e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = `0 12px 40px ${C.teal}30`; }}
           onMouseLeave={e=>{ e.currentTarget.style.borderColor = C.teal+"60"; e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "none"; }}>
           <div style={{ display:"flex", alignItems:"center", gap:isNarrow?14:22, minWidth:0, flex:1 }}>
-            <div style={{ width:isNarrow?56:72, height:isNarrow?56:72, borderRadius:16, background:C.teal+"33", color:C.teal, display:"flex", alignItems:"center", justifyContent:"center", fontSize:isNarrow?32:42, flexShrink:0 }}>😊</div>
+            <div style={{ width:isNarrow?56:72, height:isNarrow?56:72, borderRadius:16, background:C.teal+"22", color:C.teal, display:"flex", alignItems:"center", justifyContent:"center", fontSize:isNarrow?28:36, flexShrink:0, fontFamily:C.font, fontWeight:300 }}>○</div>
             <div style={{ minWidth:0 }}>
               <div style={{ fontSize:isNarrow?11:13, fontFamily:C.font, letterSpacing:2, color:C.teal, fontWeight:700, marginBottom:4 }}>START NEW SMILE DESIGN</div>
               <div style={{ fontSize:isNarrow?20:26, fontWeight:800, color:C.ink, marginBottom:4, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{heroPatient.name}</div>
@@ -1071,7 +1071,7 @@ function Dashboard({ navigate, setActivePatient, customPatients=[] }) {
       {/* Quick actions — now focused on primary clinical tools */}
       <div style={{ display:"grid",gridTemplateColumns:isNarrow?"1fr":"1fr 1fr 1fr",gap:isNarrow?12:18,marginBottom:isNarrow?24:32 }}>
         {[
-          {label:"Smile Creator",   desc:"2D smile design on patient photo",   icon:"😊", action:"smile-creator", color:C.teal},
+          {label:"Smile Creator",   desc:"2D smile design on patient photo",   icon:"○", action:"smile-creator", color:C.teal},
           {label:"Scan Viewer",     desc:"3D scan review + lab export",         icon:"◉",  action:"restoration-cad", color:C.purple},
           {label:"X-ray Analysis",  desc:"AI-assisted radiograph review",       icon:"△",  action:"xray-analysis", color:C.amber},
         ].map(a=>(

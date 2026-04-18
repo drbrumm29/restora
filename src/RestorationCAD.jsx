@@ -1040,7 +1040,7 @@ export default function RestorationCAD({ navigate, activePatient }) {
           </div>
         </div>
         <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"center" }}>
-          <button onClick={()=>navigate && navigate('smile-creator')} style={{ padding:"10px 16px", borderRadius:8, background:`linear-gradient(135deg, ${C.teal}, ${C.purple})`, color:"white", border:"none", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:C.sans, boxShadow:`0 3px 12px ${C.teal}50` }}>😊 Design in Smile Creator →</button>
+          <button onClick={()=>navigate && navigate('smile-creator')} style={{ padding:"10px 18px", borderRadius:10, background:C.teal, color:"white", border:"none", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:C.sans, boxShadow:`0 2px 8px ${C.teal}40`, letterSpacing:.1 }}>Design in Smile Creator →</button>
           {/* Orientation flip controls — user can correct if auto-orient got it wrong */}
           <div style={{ display:"flex", gap:4, padding:"4px", borderRadius:10, background:C.surface2, border:`1px solid ${C.border}` }}>
             <span style={{ fontSize:11, color:C.muted, alignSelf:"center", padding:"0 8px", fontFamily:C.font, letterSpacing:1, fontWeight:700 }}>FLIP</span>

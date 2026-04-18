@@ -551,11 +551,11 @@ export default function ToothLibraryBrowser({ navigate, activePatient }) {
         <div style={{ flex: 1, overflow: "auto", padding: 20, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 18 }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 20, fontWeight: 700, color: pack.color, marginBottom: 4 }}>{pack.name}</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: C.ink, marginBottom: 4, letterSpacing:"-.01em" }}>{pack.name}</div>
               <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5, marginBottom: 10 }}>{pack.description}</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {pack.recommendedFor.map(r => (
-                  <span key={r} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 4, background: pack.color + "20", color: pack.color, fontFamily: C.font, fontWeight: 600 }}>{r}</span>
+                  <span key={r} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 999, background: C.surface2, color: C.muted, fontFamily: C.sans, fontWeight: 500, letterSpacing: .1, border: `1px solid ${C.border}` }}>{r}</span>
                 ))}
               </div>
             </div>
