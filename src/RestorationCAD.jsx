@@ -126,7 +126,7 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
       const y = r.dist * Math.cos(r.phi);
       const z = r.dist * Math.sin(r.phi) * Math.sin(r.theta);
       camera.position.set(x, y, z);
-      camera.lookAt(0, -4, 0);
+      camera.lookAt(0, 0, 0);
     };
     r.updateCamera = updateCamera;  // expose for preset animation
     updateCamera();
@@ -453,10 +453,12 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
       Object.values(meshObjectsRef.current).forEach(o => {
         o.position.set(-center.x, -center.y, -center.z);
       });
-      const teethBiasY = size.y * 0.30;  // lift teeth toward viewport center
-      rotateRef.current.centerOffset = { x:-center.x, y:-center.y + teethBiasY, z:-center.z };
+      // Meshes are shifted so the bounding-box center sits at the origin,
+      // which is the same point camera.lookAt() targets — keeps the scan
+      // centered in the viewport on initial load and after resize.
+      rotateRef.current.centerOffset = { x:-center.x, y:-center.y, z:-center.z };
       Object.values(meshObjectsRef.current).forEach(o => {
-        o.position.set(-center.x, -center.y + teethBiasY, -center.z);
+        o.position.set(-center.x, -center.y, -center.z);
       });
       rotateRef.current.hasInitialCentered = true;
       rotateRef.current.dist = Math.max(10, maxDim * 1.5);
@@ -1089,10 +1091,10 @@ export default function RestorationCAD({ navigate, activePatient }) {
           {meshes.length > 0 && (
             <div style={{ position:"absolute", top:16, left:16, right: labelMode ? 420 : 260, display:"flex", justifyContent:"space-between", alignItems:"center", padding:"0 14px", pointerEvents:"none", zIndex:2 }}>
               <div style={{ padding:"8px 14px", borderRadius:8, background:C.surface+"dd", border:`1px solid ${C.border}`, backdropFilter:"blur(6px)", fontSize:13, color:C.ink, fontFamily:C.font, letterSpacing:1, fontWeight:700 }}>
-                ← PATIENT RIGHT (#1-#16)
+                ← PATIENT RIGHT · upper #1–#8 · lower #25–#32
               </div>
               <div style={{ padding:"8px 14px", borderRadius:8, background:C.surface+"dd", border:`1px solid ${C.border}`, backdropFilter:"blur(6px)", fontSize:13, color:C.ink, fontFamily:C.font, letterSpacing:1, fontWeight:700 }}>
-                PATIENT LEFT (#17-#32) →
+                PATIENT LEFT · upper #9–#16 · lower #17–#24 →
               </div>
             </div>
           )}
