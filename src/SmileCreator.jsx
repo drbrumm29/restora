@@ -728,9 +728,11 @@ export default function SmileCreator({ navigate, activePatient }) {
   const hitTestCurvePoints = (cx, cy) => {
     if (!smileCurve) return -1;
     const points = [smileCurve.p0, smileCurve.p1, smileCurve.p2];
+    // Generous 20px hit radius — matches the visual dot (r=10) plus slop so
+    // the user doesn't have to pixel-hunt to start dragging a control point.
     for (let i = 0; i < 3; i++) {
       const cpos = imageToCanvas(points[i].x, points[i].y);
-      if (Math.hypot(cpos.x - cx, cpos.y - cy) < 14) return i;
+      if (Math.hypot(cpos.x - cx, cpos.y - cy) < 20) return i;
     }
     return -1;
   };
