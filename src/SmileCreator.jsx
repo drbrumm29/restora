@@ -1445,25 +1445,26 @@ export default function SmileCreator({ navigate, activePatient }) {
             </div>
           </div>
 
-          {/* Step indicator */}
-          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontFamily: C.sans }}>
+          {/* Step indicator — enlarged for prominence, Apple-style two-step flow
+               (step 1 Photo is always set by default, so display as 2 active steps) */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, fontFamily: C.sans }}>
             {[
-              { n: 1, label: "Photo" },
-              { n: 2, label: "Smile Curve" },
-              { n: 3, label: "Design" },
+              { n: 2, label: "Place smile curve" },
+              { n: 3, label: "Refine design" },
             ].map((s, i) => (
-              <div key={s.n} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div key={s.n} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{
-                  width: 22, height: 22, borderRadius: 11,
+                  width: 28, height: 28, borderRadius: 14,
                   background: step >= s.n ? C.teal : "transparent",
                   border: `1.5px solid ${step >= s.n ? C.teal : C.border}`,
                   color: step >= s.n ? "#fff" : C.muted,
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  fontWeight: 700, fontSize: 11,
+                  fontWeight: 600, fontSize: 13,
                   fontFamily: C.sans,
-                }}>{step > s.n ? "✓" : s.n}</div>
-                <span style={{ color: step === s.n ? C.ink : (step > s.n ? C.teal : C.muted), fontWeight: step === s.n ? 600 : 500 }}>{s.label}</span>
-                {i < 2 && <span style={{ color: C.border, margin: "0 4px", fontSize: 10 }}>›</span>}
+                  transition: "all .18s",
+                }}>{step > s.n ? "✓" : (i + 1)}</div>
+                <span style={{ color: step === s.n ? C.ink : (step > s.n ? C.teal : C.muted), fontWeight: step === s.n ? 600 : 500, letterSpacing:.1 }}>{s.label}</span>
+                {i < 1 && <span style={{ color: C.border, margin: "0 6px", fontSize: 12 }}>›</span>}
               </div>
             ))}
           </div>

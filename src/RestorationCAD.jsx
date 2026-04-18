@@ -619,6 +619,9 @@ export default function RestorationCAD({ navigate, activePatient }) {
   const [toothLabels, setToothLabels] = useState([]);  // [{num, x, y, z}, ...]
   const [pendingPick, setPendingPick] = useState(null); // { x, y, z }
   const [viewAngle, setViewAngle] = useState(null);    // 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom' | 'iso'
+  const [showControlsLegend, setShowControlsLegend] = useState(() => {
+    try { return localStorage.getItem('restora-controls-legend-dismissed') !== '1'; } catch { return true; }
+  });
   // Manual orientation flip — persisted per patient, lets user override auto-orient
   const [orientFlip, setOrientFlip] = useState(() => {
     try {
@@ -1090,10 +1093,10 @@ export default function RestorationCAD({ navigate, activePatient }) {
           {/* Universal numbering orientation — always visible */}
           {meshes.length > 0 && (
             <div style={{ position:"absolute", top:16, left:16, right: labelMode ? 420 : 260, display:"flex", justifyContent:"space-between", alignItems:"center", padding:"0 14px", pointerEvents:"none", zIndex:2 }}>
-              <div style={{ padding:"8px 14px", borderRadius:8, background:C.surface+"dd", border:`1px solid ${C.border}`, backdropFilter:"blur(6px)", fontSize:13, color:C.ink, fontFamily:C.font, letterSpacing:1, fontWeight:700 }}>
+              <div style={{ padding:"10px 16px", borderRadius:999, background:"rgba(19,35,56,0.55)", border:`1px solid rgba(255,255,255,0.08)`, backdropFilter:"blur(16px) saturate(1.4)", WebkitBackdropFilter:"blur(16px) saturate(1.4)", fontSize:12, color:C.ink, fontFamily:C.font, letterSpacing:1.2, fontWeight:600 }}>
                 ← PATIENT RIGHT · upper #1–#8 · lower #25–#32
               </div>
-              <div style={{ padding:"8px 14px", borderRadius:8, background:C.surface+"dd", border:`1px solid ${C.border}`, backdropFilter:"blur(6px)", fontSize:13, color:C.ink, fontFamily:C.font, letterSpacing:1, fontWeight:700 }}>
+              <div style={{ padding:"10px 16px", borderRadius:999, background:"rgba(19,35,56,0.55)", border:`1px solid rgba(255,255,255,0.08)`, backdropFilter:"blur(16px) saturate(1.4)", WebkitBackdropFilter:"blur(16px) saturate(1.4)", fontSize:12, color:C.ink, fontFamily:C.font, letterSpacing:1.2, fontWeight:600 }}>
                 PATIENT LEFT · upper #9–#16 · lower #17–#24 →
               </div>
             </div>
@@ -1193,12 +1196,18 @@ export default function RestorationCAD({ navigate, activePatient }) {
             ))}
           </div>
 
-          {/* Legend */}
-          <div style={{ position:"absolute", bottom:16, left:16, padding:"12px 16px", borderRadius:8, background:C.surface+"dd", border:`1px solid ${C.border}`, fontSize:16, color:C.ink, backdropFilter:"blur(6px)" }}>
-            <div style={{ fontFamily:C.font, letterSpacing:1.5, color:C.teal, fontWeight:700, marginBottom:6, fontSize:15 }}>CONTROLS</div>
-            <div>Drag · rotate · Scroll · zoom</div>
-            <div style={{ marginTop:4 }}>Touch: drag + pinch on mobile</div>
-          </div>
+          {/* Legend — shown on first visit, dismissible, remembers dismissal */}
+          {showControlsLegend && (
+            <div style={{ position:"absolute", bottom:16, left:16, padding:"12px 16px", borderRadius:12, background:"rgba(19,35,56,0.55)", border:`1px solid rgba(255,255,255,0.08)`, fontSize:13, color:C.ink, backdropFilter:"blur(16px) saturate(1.4)", WebkitBackdropFilter:"blur(16px) saturate(1.4)", display:"flex", alignItems:"center", gap:14 }}>
+              <div>
+                <div style={{ fontFamily:C.font, letterSpacing:1.5, color:C.teal, fontWeight:600, marginBottom:4, fontSize:10 }}>CONTROLS</div>
+                <div style={{ fontSize:12, color:C.muted, lineHeight:1.5 }}>Drag · rotate &nbsp;·&nbsp; Scroll · zoom &nbsp;·&nbsp; Touch: drag + pinch</div>
+              </div>
+              <button onClick={() => { try { localStorage.setItem('restora-controls-legend-dismissed','1'); } catch {} setShowControlsLegend(false); }}
+                aria-label="Dismiss controls hint"
+                style={{ width:22, height:22, borderRadius:"50%", border:"none", background:"rgba(255,255,255,0.08)", color:C.muted, cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}>×</button>
+            </div>
+          )}
 
           {/* Library picker (overlay) */}
           {showLib && (
