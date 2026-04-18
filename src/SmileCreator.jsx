@@ -427,19 +427,21 @@ export default function SmileCreator({ navigate, activePatient }) {
       );
     }
 
-    // Ghost guide: show where next click should land, based on typical smile photo framing
-    // Approximate positions — left commissure ~25% from left, midline ~50%, right ~75%
-    // at ~60% down from top (typical photo framing of a retracted smile)
+    // Ghost guide: show where next click should land, based on typical smile photo framing.
+    // Target is the INCISAL EDGES of the upper arch — same line the smile curve interpolates
+    // through. For a standard retracted smile photo, canine tips sit ~38%/62% horizontally
+    // and the incisal plane sits ~55% down (just above the lower lip). Matches the AI
+    // auto-place landmarks (canine incisal edges, not commissures).
     if (!smileCurve && step === 2 && transform) {
       const imgW = transform.imgW;
       const imgH = transform.imgH;
       const imgOx = transform.offsetX;
       const imgOy = transform.offsetY;
-      const ghostY = imgOy + imgH * 0.58;
+      const ghostY = imgOy + imgH * 0.55;
       const ghosts = [
-        { x: imgOx + imgW * 0.32, label: 'Pt R', caption: 'Patient right corner of lips' },
-        { x: imgOx + imgW * 0.50, label: 'M', caption: 'Between front teeth' },
-        { x: imgOx + imgW * 0.68, label: 'Pt L', caption: 'Patient left corner of lips' },
+        { x: imgOx + imgW * 0.38, label: 'Pt R', caption: 'Patient right canine incisal edge (#6 tip)' },
+        { x: imgOx + imgW * 0.50, label: 'M',    caption: 'Midline — between #8 and #9 incisal edges' },
+        { x: imgOx + imgW * 0.62, label: 'Pt L', caption: 'Patient left canine incisal edge (#11 tip)' },
       ];
       const nextIdx = placementBuffer.length;  // which ghost is "active"
 
@@ -706,10 +708,21 @@ export default function SmileCreator({ navigate, activePatient }) {
 
   // ── Mouse/touch handlers ──────────────────────────────────────
   const getCanvasPoint = (e) => {
-    const rect = canvasRef.current.getBoundingClientRect();
-    const cx = (e.clientX ?? e.touches?.[0]?.clientX) - rect.left;
-    const cy = (e.clientY ?? e.touches?.[0]?.clientY) - rect.top;
-    return { x: cx, y: cy };
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.clientX ?? e.touches?.[0]?.clientX ?? e.changedTouches?.[0]?.clientX;
+    const clientY = e.clientY ?? e.touches?.[0]?.clientY ?? e.changedTouches?.[0]?.clientY;
+    // Normalize into the canvasDim coordinate system used by the drawing code.
+    // If the canvas's actual rendered size drifted from canvasDim (sub-pixel
+    // rounding, flex layout settling, CSS zoom), this scale keeps click
+    // coordinates and drawn coordinates in the same frame so dots land exactly
+    // where the user tapped.
+    const sx = rect.width  > 0 ? canvasDim.w / rect.width  : 1;
+    const sy = rect.height > 0 ? canvasDim.h / rect.height : 1;
+    return {
+      x: (clientX - rect.left) * sx,
+      y: (clientY - rect.top)  * sy,
+    };
   };
 
   const hitTestCurvePoints = (cx, cy) => {
