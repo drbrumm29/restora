@@ -81,7 +81,7 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
     const mount = mountRef.current;
     if (!mount) return;
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(background || 0x0a1420);
+    scene.background = new THREE.Color(background || 0x2b3540);
     const w = mount.clientWidth, h = mount.clientHeight;
     const camera = new THREE.PerspectiveCamera(45, w/h, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -229,7 +229,7 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
 
   // Update background
   useEffect(() => {
-    if (sceneRef.current) sceneRef.current.background = new THREE.Color(background || 0x0a1420);
+    if (sceneRef.current) sceneRef.current.background = new THREE.Color(background || 0x2b3540);
   }, [background]);
 
   // Add/update meshes
@@ -525,8 +525,8 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
     if (!viewAngle || !rotateRef.current.updateCamera) return;
     // Base target angles assuming unflipped scene
     const basePresets = {
-      front:  { theta: Math.PI/2,       phi: Math.PI/2 },
-      back:   { theta: -Math.PI/2,      phi: Math.PI/2 },
+      front:  { theta: -Math.PI/2,      phi: Math.PI/2 },
+      back:   { theta: Math.PI/2,       phi: Math.PI/2 },
       left:   { theta: Math.PI,         phi: Math.PI/2 },
       right:  { theta: 0,               phi: Math.PI/2 },
       top:    { theta: Math.PI/2,       phi: 0.15 },
@@ -608,7 +608,7 @@ export default function RestorationCAD({ navigate, activePatient }) {
   const [stats, setStats]     = useState({ meshCount: 0, triCount: 0 });
   const [material, setMat]    = useState("eMax LT");
   const [shade, setShade]     = useState("A1");
-  const [bgColor]             = useState(0x0a1420);
+  const [bgColor]             = useState(0x2b3540);  // exocad-style medium gray
   const [labelMode, setLabelMode] = useState(false);
   const [toothLabels, setToothLabels] = useState([]);  // [{num, x, y, z}, ...]
   const [pendingPick, setPendingPick] = useState(null); // { x, y, z }
@@ -1059,7 +1059,7 @@ export default function RestorationCAD({ navigate, activePatient }) {
       {/* Main split */}
       <div style={{ flex:1, display:"flex", minHeight:0 }}>
         {/* Viewer */}
-        <div style={{ flex:1, position:"relative", minWidth:0, background:"#0a1420" }}>
+        <div style={{ flex:1, position:"relative", minWidth:0, background:"#2b3540" }}>
           <STLViewer
             meshes={meshes}
             activeId={activeId}
