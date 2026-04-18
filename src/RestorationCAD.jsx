@@ -126,7 +126,7 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
       const y = r.dist * Math.cos(r.phi);
       const z = r.dist * Math.sin(r.phi) * Math.sin(r.theta);
       camera.position.set(x, y, z);
-      camera.lookAt(0, 2, 0);
+      camera.lookAt(0, -4, 0);
     };
     r.updateCamera = updateCamera;  // expose for preset animation
     updateCamera();
