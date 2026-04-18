@@ -1447,28 +1447,33 @@ function TitleBar({ screen, navigate, onMenuClick, isMobile }) {
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
         </button>
       ) : (
+        // Quiet macOS-style traffic-light dots: all grey until hovered.
         <div style={{ display:"flex",gap:6 }}>
-          {["#ef4444","#f59e0b","#22c55e"].map((c,i)=><div key={i} style={{ width:12,height:12,borderRadius:"50%",background:c }} />)}
+          {[0,1,2].map(i => <div key={i} style={{ width:12,height:12,borderRadius:"50%",background:C.borderSoft }} />)}
         </div>
       )}
       <div style={{ display:"flex",alignItems:"center",gap:8,marginLeft:isMobile?0:8 }}>
-        <div style={{ width:28,height:28,borderRadius:8,background:`linear-gradient(135deg,${C.teal},#0080cc)`,display:"flex",alignItems:"center",justifyContent:"center" }}>
+        <div style={{ width:26,height:26,borderRadius:7,background:C.teal,display:"flex",alignItems:"center",justifyContent:"center" }}>
           <svg width="13" height="13" viewBox="0 0 12 12" fill="none"><path d="M1.5 10.5C1.5 7 4 2 6 2C8 2 10.5 7 10.5 10.5" stroke="white" strokeWidth="1.8" strokeLinecap="round"/><circle cx="6" cy="10.5" r="1.2" fill="white"/></svg>
         </div>
-        <span style={{ fontSize:16,color:C.ink,fontWeight:700 }}>Re<span style={{ color:C.teal }}>stora</span></span>
+        <span style={{ fontSize:15,color:C.ink,fontWeight:600,letterSpacing:"-.01em" }}>Re<span style={{ color:C.teal }}>stora</span></span>
       </div>
       {!isMobile && (
         <>
           <span style={{ fontSize:13,color:C.light }}>›</span>
-          <span style={{ fontSize:14,fontWeight:600,color:C.ink }}>{def.label||screen}</span>
+          <span style={{ fontSize:13,fontWeight:500,color:C.muted }}>{def.label||screen}</span>
         </>
       )}
       <div style={{ flex:1 }} />
       {!isMobile && (
-        <button onClick={()=>navigate("ai-design-guide")} style={{ display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:20,background:C.surface2,border:`1px solid ${C.border}`,fontSize:12,fontFamily:C.font,color:C.teal,cursor:"pointer",letterSpacing:.5 }}>⌘K AI</button>
-      )}
-      {!isMobile && (
-        <button style={{ padding:"6px 14px",borderRadius:20,border:`1px solid ${C.border}`,background:"transparent",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:C.sans }}>Share ↗</button>
+        // Single quiet action: ⌘K AI. "Share" moved out of top bar; export
+        // actions live on the Export screen, not in the global header.
+        <button onClick={()=>navigate("ai-design-guide")}
+          style={{ display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,background:"transparent",border:`1px solid ${C.border}`,fontSize:12,fontFamily:C.font,color:C.muted,cursor:"pointer",letterSpacing:.5 }}
+          onMouseEnter={e=>{ e.currentTarget.style.color=C.teal; e.currentTarget.style.borderColor=C.teal+"60"; }}
+          onMouseLeave={e=>{ e.currentTarget.style.color=C.muted; e.currentTarget.style.borderColor=C.border; }}>
+          ⌘K AI
+        </button>
       )}
     </div>
   );
