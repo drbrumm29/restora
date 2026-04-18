@@ -213,6 +213,14 @@ export default function SmileCreator({ navigate, activePatient }) {
   const [showBefore, setShowBefore] = useState(false);
   const [pulseTick, setPulseTick] = useState(0);
   const [placementBuffer, setPlacementBuffer] = useState([]);
+  // Reference line overlays (DSD-style) — each stored as image-space coordinates
+  // Midline = vertical line (x); horizontal lines = y position
+  const [refLines, setRefLines] = useState({
+    midline:        { enabled: false, x: null },    // vertical
+    interpupillary: { enabled: false, y: null },    // horizontal (eyes)
+    lipLine:        { enabled: false, y: null },    // horizontal (upper lip)
+  });
+  const [refLineDrag, setRefLineDrag] = useState(null);
 
   // Multi-photo design storage — each photo URL gets its own smile curve and
   // tooth placement, because landmarks shift between retracted / smiling /
@@ -481,6 +489,55 @@ export default function SmileCreator({ navigate, activePatient }) {
       });
     }
 
+    // Draw reference lines (DSD-style overlays)
+    if (transform) {
+      const drawRefLine = (color, x1, y1, x2, y2, label) => {
+        const a = imageToCanvas(x1, y1);
+        const b = imageToCanvas(x2, y2);
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([8, 5]);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // Label
+        ctx.fillStyle = color;
+        ctx.font = "bold 11px " + C.font;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, b.x + 6, b.y);
+        // Drag handle dot at midpoint
+        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        ctx.beginPath();
+        ctx.arc(mid.x, mid.y, 6, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(mid.x, mid.y, 4, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.restore();
+      };
+      // Midline (vertical line through full image height)
+      if (refLines.midline.enabled) {
+        const mx = refLines.midline.x ?? photoDim.w / 2;
+        drawRefLine('#f59e0b', mx, 0, mx, photoDim.h, 'Midline');
+      }
+      // Interpupillary (horizontal)
+      if (refLines.interpupillary.enabled) {
+        const ly = refLines.interpupillary.y ?? photoDim.h * 0.35;
+        drawRefLine('#0abab5', 0, ly, photoDim.w, ly, 'Eyes');
+      }
+      // Lip line (horizontal)
+      if (refLines.lipLine.enabled) {
+        const ly = refLines.lipLine.y ?? photoDim.h * 0.55;
+        drawRefLine('#ec4899', 0, ly, photoDim.w, ly, 'Lip line');
+      }
+    }
+
     // Draw smile curve
     if (smileCurve && transform) {
       const { p0, p1, p2 } = smileCurve;
@@ -645,7 +702,7 @@ export default function SmileCreator({ navigate, activePatient }) {
         ctx.restore();
       });
     }
-  }, [canvasDim, transform, smileCurve, teeth, selectedTooth, shade, showPhoto, showBefore, step, placementBuffer, pulseTick, library]);
+  }, [canvasDim, transform, smileCurve, teeth, selectedTooth, shade, showPhoto, showBefore, step, placementBuffer, pulseTick, library, refLines]);
 
   // ── Mouse/touch handlers ──────────────────────────────────────
   const getCanvasPoint = (e) => {
@@ -739,6 +796,35 @@ export default function SmileCreator({ navigate, activePatient }) {
         setPlacementBuffer(newBuffer);
       }
       return;
+    }
+
+    // Ref line drag (check before tooth handles — they're sparse and easy to hit)
+    {
+      const hitRefLine = (() => {
+        // Vertical midline: click near the line's x
+        if (refLines.midline.enabled) {
+          const mx = refLines.midline.x ?? photoDim.w / 2;
+          const cpos = imageToCanvas(mx, photoDim.h / 2);
+          if (Math.abs(cx - cpos.x) < 10) return 'midline';
+        }
+        // Interpupillary horizontal
+        if (refLines.interpupillary.enabled) {
+          const ly = refLines.interpupillary.y ?? photoDim.h * 0.35;
+          const cpos = imageToCanvas(photoDim.w / 2, ly);
+          if (Math.abs(cy - cpos.y) < 10) return 'interpupillary';
+        }
+        // Lip line horizontal
+        if (refLines.lipLine.enabled) {
+          const ly = refLines.lipLine.y ?? photoDim.h * 0.55;
+          const cpos = imageToCanvas(photoDim.w / 2, ly);
+          if (Math.abs(cy - cpos.y) < 10) return 'lipLine';
+        }
+        return null;
+      })();
+      if (hitRefLine) {
+        setRefLineDrag(hitRefLine);
+        return;
+      }
     }
 
     // PRIORITY 1 — handles on selected tooth (they sit on top of everything)
@@ -853,6 +939,23 @@ export default function SmileCreator({ navigate, activePatient }) {
       return;
     }
 
+    // Drag a ref line
+    if (refLineDrag) {
+      const imgPt = canvasToImage(cx, cy);
+      setRefLines(rl => {
+        const next = { ...rl };
+        if (refLineDrag === 'midline') {
+          next.midline = { ...next.midline, x: Math.max(0, Math.min(photoDim.w, imgPt.x)) };
+        } else if (refLineDrag === 'interpupillary') {
+          next.interpupillary = { ...next.interpupillary, y: Math.max(0, Math.min(photoDim.h, imgPt.y)) };
+        } else if (refLineDrag === 'lipLine') {
+          next.lipLine = { ...next.lipLine, y: Math.max(0, Math.min(photoDim.h, imgPt.y)) };
+        }
+        return next;
+      });
+      return;
+    }
+
     if (curveDragIdx !== null && smileCurve) {
       const imgPt = canvasToImage(cx, cy);
       const keys = ['p0', 'p1', 'p2'];
@@ -873,6 +976,7 @@ export default function SmileCreator({ navigate, activePatient }) {
     setCurveDragIdx(null);
     setToothDragOffset(null);
     setActiveHandle(null);
+    setRefLineDrag(null);
   };
 
   // Pulse animation loop — keeps ghost dots pulsing while placing the smile curve
@@ -1841,6 +1945,40 @@ export default function SmileCreator({ navigate, activePatient }) {
                   </div>
                 </div>
               )}
+
+              {/* Reference lines (DSD-style) */}
+              <div style={{ marginBottom: 22 }}>
+                <div style={{ fontSize: 11, color: C.muted, letterSpacing: 1, fontWeight: 600, marginBottom: 10, textTransform: "uppercase" }}>Reference Lines</div>
+                {[
+                  { key: 'midline',        label: 'Facial midline',     color: '#f59e0b' },
+                  { key: 'interpupillary', label: 'Interpupillary line', color: '#0abab5' },
+                  { key: 'lipLine',        label: 'Upper lip line',     color: '#ec4899' },
+                ].map(opt => {
+                  const isOn = refLines[opt.key].enabled;
+                  return (
+                    <button key={opt.key}
+                      onClick={() => setRefLines(rl => ({ ...rl, [opt.key]: { ...rl[opt.key], enabled: !rl[opt.key].enabled } }))}
+                      style={{
+                        width: "100%", display: "flex", alignItems: "center", gap: 10,
+                        padding: "10px 12px", marginBottom: 6, borderRadius: 8,
+                        background: isOn ? C.tealDim : C.surface2,
+                        border: `1px solid ${isOn ? opt.color + '60' : C.border}`,
+                        color: isOn ? C.ink : C.muted,
+                        fontSize: 12, fontFamily: C.sans, cursor: "pointer",
+                        transition: "all 0.12s",
+                      }}>
+                      <span style={{ width: 14, height: 2, background: opt.color, display: "inline-block", flexShrink: 0 }} />
+                      <span style={{ flex: 1, textAlign: "left" }}>{opt.label}</span>
+                      <span style={{ fontSize: 10, color: isOn ? opt.color : C.muted, fontFamily: C.font, letterSpacing: 0.5 }}>
+                        {isOn ? 'ON' : 'OFF'}
+                      </span>
+                    </button>
+                  );
+                })}
+                <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5, marginTop: 4 }}>
+                  Drag the white dot on each line to fine-tune position.
+                </div>
+              </div>
 
               <div style={{ marginTop: 18, paddingTop: 14, borderTop: `1px solid ${C.borderSoft}` }}>
                 <button onClick={() => setShowPhoto(p => !p)}
