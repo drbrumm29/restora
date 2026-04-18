@@ -437,9 +437,9 @@ export default function SmileCreator({ navigate, activePatient }) {
       const imgOy = transform.offsetY;
       const ghostY = imgOy + imgH * 0.58;
       const ghosts = [
-        { x: imgOx + imgW * 0.32, label: 'L', caption: 'Left corner of lips' },
+        { x: imgOx + imgW * 0.32, label: 'Pt R', caption: 'Patient right corner of lips' },
         { x: imgOx + imgW * 0.50, label: 'M', caption: 'Between front teeth' },
-        { x: imgOx + imgW * 0.68, label: 'R', caption: 'Right corner of lips' },
+        { x: imgOx + imgW * 0.68, label: 'Pt L', caption: 'Patient left corner of lips' },
       ];
       const nextIdx = placementBuffer.length;  // which ghost is "active"
 
@@ -576,7 +576,7 @@ export default function SmileCreator({ navigate, activePatient }) {
           ctx.font = "bold 11px " + C.font;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText(i === 1 ? 'M' : (i === 0 ? 'L' : 'R'), pt.x, pt.y);
+          ctx.fillText(i === 1 ? 'M' : (i === 0 ? 'Pt R' : 'Pt L'), pt.x, pt.y);
         });
       }
     }
@@ -596,7 +596,7 @@ export default function SmileCreator({ navigate, activePatient }) {
         ctx.font = "bold 11px " + C.font;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(i === 1 ? 'M' : (i === 0 ? 'L' : 'R'), cp.x, cp.y);
+        ctx.fillText(i === 1 ? 'M' : (i === 0 ? 'Pt R' : 'Pt L'), cp.x, cp.y);
       });
     }
 
@@ -1473,7 +1473,7 @@ export default function SmileCreator({ navigate, activePatient }) {
           {/* Placement progress dots (while clicking the 3 curve points) */}
           {step === 2 && placementBuffer.length > 0 && transform && (
             <div style={{ position: "absolute", top: 64, left: 20, padding: "10px 14px", background: C.surface, border: `1px solid ${C.tealBorder}`, borderRadius: 8, fontSize: 13, color: C.teal, fontFamily: C.font }}>
-              {placementBuffer.length} of 3 points placed. Next: {['LEFT commissure','MIDLINE','RIGHT commissure'][placementBuffer.length]}
+              {placementBuffer.length} of 3 points placed. Next: {['Patient RIGHT commissure (viewer left)','MIDLINE','Patient LEFT commissure (viewer right)'][placementBuffer.length]}
             </div>
           )}
           {/* Canvas overlay buttons (top right) */}
