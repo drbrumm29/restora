@@ -1789,7 +1789,7 @@ export default function SmileCreator({ navigate, activePatient }) {
                     />
                   </div>
                   <div style={{ padding: "11px 13px", background: C.tealDim, border: `1px solid ${C.tealBorder}`, borderRadius: 8, fontSize: 12, color: C.ink, lineHeight: 1.6 }}>
-                    Or follow the pulsing dots on the photo. Click each in turn: left lip corner, midline, right lip corner.
+                    Or follow the pulsing dots on the photo. Click each in turn: patient-right canine tip (#6), midline between #8 and #9, patient-left canine tip (#11).
                   </div>
                 </>
               ) : (
