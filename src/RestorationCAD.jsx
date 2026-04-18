@@ -453,9 +453,13 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
       Object.values(meshObjectsRef.current).forEach(o => {
         o.position.set(-center.x, -center.y, -center.z);
       });
-      rotateRef.current.centerOffset = { x:-center.x, y:-center.y, z:-center.z };
+      const teethBiasY = size.y * 0.15;  // lift teeth toward viewport center
+      rotateRef.current.centerOffset = { x:-center.x, y:-center.y + teethBiasY, z:-center.z };
+      Object.values(meshObjectsRef.current).forEach(o => {
+        o.position.set(-center.x, -center.y + teethBiasY, -center.z);
+      });
       rotateRef.current.hasInitialCentered = true;
-      rotateRef.current.dist = Math.max(10, maxDim * 1.8);
+      rotateRef.current.dist = Math.max(10, maxDim * 1.5);
     }
 
     onStats?.({ meshCount: meshes.filter(m=>m.visible!==false).length, triCount: totalTris });
