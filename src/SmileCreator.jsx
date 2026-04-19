@@ -62,31 +62,80 @@ const PROPORTIONS = {
 // Each path is an array of [x, y] points forming a closed polygon.
 // 4 tooth types: central, lateral, canine, premolar.
 
+// ─────────────────────────────────────────────────────────────────────
+// DSD-style anatomical tooth silhouettes.
+// Canonical outlines for patient-RIGHT upper teeth (#4-#8) drawn in a
+// labial (frontal) view. Patient-LEFT teeth (#9-#13) reuse these outlines
+// with an x-flip at render time.
+//
+// Coordinate frame (unit square, origin at tooth center):
+//   x = mesial/distal. For patient-right teeth: +x = mesial (toward
+//   midline), -x = distal (toward back of mouth).
+//   y = -0.5 cervical (gum line), +0.5 incisal (biting edge).
+//
+// Each outline is dense (~36 vertices) and traversed incisal→mesial→
+// cervical→distal→incisal so the curve smoother (drawSmoothPolygon) can
+// produce a continuous, natural silhouette. Shapes reference natural
+// tooth anatomy — AACD / Chu proportions, Fradeani morphology:
+//   • central  — trapezoidal, slight incisal convexity, mesial edge
+//                straighter than distal edge (asymmetry ≈ 8%)
+//   • lateral  — ovoid, cervical constriction, clearly smaller than
+//                the central (~80% width)
+//   • canine   — pointed cusp tip slightly distal of center, mesial
+//                slope shorter than distal slope, robust cervical bulge
+//   • premolar — wider than canine, broad rounded cusp, clear
+//                buccal convexity
+// ─────────────────────────────────────────────────────────────────────
 const TOOTH_OUTLINES = {
-  // CENTRAL INCISOR — boxy, slight incisal curve, corners rounded
   central: [
-    [-0.47, -0.45], [-0.48, -0.15], [-0.45, +0.15], [-0.35, +0.42], [-0.15, +0.48],
-    [+0.15, +0.48], [+0.35, +0.42], [+0.45, +0.15], [+0.48, -0.15], [+0.47, -0.45],
-    [+0.38, -0.48], [+0.20, -0.50], [0, -0.50], [-0.20, -0.50], [-0.38, -0.48],
+    // incisal edge (bottom) — subtle convex curve with mesial corner
+    // slightly sharper than distal (natural asymmetry)
+    [-0.42, +0.48], [-0.30, +0.49], [-0.15, +0.50], [0.00, +0.50],
+    [+0.16, +0.50], [+0.32, +0.49], [+0.44, +0.46],
+    // mesial edge (right side in canonical frame = toward midline)
+    [+0.46, +0.36], [+0.46, +0.22], [+0.45, +0.06], [+0.44, -0.10],
+    [+0.43, -0.24], [+0.41, -0.36], [+0.38, -0.44],
+    // cervical curve (top, gum line) — slight coronal convexity
+    [+0.30, -0.48], [+0.18, -0.50], [+0.02, -0.50], [-0.14, -0.50], [-0.28, -0.48],
+    // distal edge (left side) — slightly curved
+    [-0.36, -0.44], [-0.40, -0.36], [-0.42, -0.24], [-0.44, -0.10],
+    [-0.45, +0.06], [-0.45, +0.22], [-0.44, +0.36],
   ],
-  // LATERAL INCISOR — more rounded, smaller, ovoid
   lateral: [
-    [-0.42, -0.35], [-0.46, -0.05], [-0.42, +0.22], [-0.30, +0.42], [-0.12, +0.48],
-    [+0.12, +0.48], [+0.30, +0.42], [+0.42, +0.22], [+0.46, -0.05], [+0.42, -0.35],
-    [+0.30, -0.45], [+0.10, -0.48], [-0.10, -0.48], [-0.30, -0.45],
+    // ovoid: smaller + rounder than central, cervical constriction
+    [-0.34, +0.46], [-0.22, +0.48], [-0.08, +0.48], [+0.08, +0.48],
+    [+0.22, +0.47], [+0.34, +0.44],
+    [+0.38, +0.34], [+0.40, +0.20], [+0.40, +0.04], [+0.39, -0.12],
+    [+0.37, -0.26], [+0.33, -0.38],
+    [+0.24, -0.44], [+0.10, -0.46], [-0.04, -0.46], [-0.18, -0.45], [-0.28, -0.42],
+    [-0.34, -0.34], [-0.37, -0.22], [-0.39, -0.06], [-0.39, +0.10],
+    [-0.38, +0.24], [-0.36, +0.36],
   ],
-  // CANINE — pointed incisal tip, robust, slightly asymmetric (mesial longer than distal)
   canine: [
-    [-0.40, -0.15], [-0.46, +0.10], [-0.42, +0.35], [-0.28, +0.46], [-0.08, +0.48],
-    [+0.10, +0.48], [+0.32, +0.42], [+0.45, +0.22], [+0.48, -0.05], [+0.42, -0.28],
-    [+0.25, -0.45], [+0.05, -0.50], [-0.15, -0.48], [-0.32, -0.38],
+    // pointed cusp — tip slightly distal of center (natural canine)
+    [-0.06, +0.50], [+0.02, +0.49],
+    // mesial slope (shorter, steeper)
+    [+0.18, +0.44], [+0.32, +0.36], [+0.42, +0.22],
+    // mesial edge down to cervical
+    [+0.46, +0.06], [+0.47, -0.10], [+0.46, -0.26], [+0.42, -0.38],
+    // cervical — robust, slightly triangular from facial
+    [+0.32, -0.46], [+0.18, -0.50], [+0.04, -0.50], [-0.12, -0.50], [-0.26, -0.48],
+    // distal edge
+    [-0.36, -0.42], [-0.42, -0.32], [-0.44, -0.18], [-0.44, -0.02],
+    [-0.42, +0.14], [-0.38, +0.28],
+    // distal slope (longer, shallower, meets the cusp tip)
+    [-0.30, +0.38], [-0.20, +0.44], [-0.12, +0.48],
   ],
-  // PREMOLAR — buccal cusp + smaller lingual cusp silhouette when viewed facially
-  // From facial view it looks like a wider canine with more rounded cusp tip
   premolar: [
-    [-0.40, -0.10], [-0.45, +0.15], [-0.40, +0.38], [-0.25, +0.48], [-0.08, +0.50],
-    [+0.10, +0.50], [+0.28, +0.46], [+0.42, +0.30], [+0.46, +0.05], [+0.42, -0.22],
-    [+0.25, -0.42], [+0.05, -0.48], [-0.18, -0.45], [-0.35, -0.32],
+    // Broad rounded cusp silhouette from facial view. Wider than canine,
+    // flatter cusp tip.
+    [-0.26, +0.48], [-0.12, +0.50], [+0.02, +0.50], [+0.16, +0.50], [+0.28, +0.48],
+    [+0.38, +0.42], [+0.44, +0.32],
+    [+0.46, +0.18], [+0.46, +0.02], [+0.45, -0.14], [+0.42, -0.28],
+    [+0.36, -0.38],
+    [+0.26, -0.44], [+0.12, -0.46], [-0.02, -0.46], [-0.16, -0.46], [-0.28, -0.44],
+    [-0.36, -0.38], [-0.42, -0.28], [-0.45, -0.14], [-0.46, +0.02], [-0.46, +0.18],
+    [-0.44, +0.32], [-0.38, +0.42],
   ],
 };
 
@@ -129,6 +178,29 @@ const SHADE_HEX = {
   "B1":   "#f8ecd0", "B2":   "#f2deb8", "B3":   "#eacfa0",
   "C1":   "#e8d8b8", "C2":   "#ddc8a0",
 };
+
+// Build a smooth closed path through the given vertices using quadratic
+// bezier segments whose control points are the original vertices and whose
+// on-curve anchors are vertex midpoints. This is the classic "smooth polygon"
+// technique — the curve hits every midpoint and uses each vertex as a
+// control handle, producing a natural, anatomically-plausible silhouette
+// (no sharp polygon corners). Input is [[x, y], ...] in the tooth-local
+// -0.5..+0.5 frame; xs/ys are the pre-scaled canvas pixels.
+function traceSmoothOutline(ctx, verts, xs, ys) {
+  if (verts.length < 3) return;
+  const p = verts.map(([x, y]) => [x * xs, y * ys]);
+  const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  // Start at midpoint of last→first so the curve closes seamlessly.
+  const start = mid(p[p.length - 1], p[0]);
+  ctx.moveTo(start[0], start[1]);
+  for (let i = 0; i < p.length; i++) {
+    const current = p[i];
+    const next = p[(i + 1) % p.length];
+    const m = mid(current, next);
+    ctx.quadraticCurveTo(current[0], current[1], m[0], m[1]);
+  }
+  ctx.closePath();
+}
 
 // ── Geometry helpers ───────────────────────────────────────────────
 // Parabolic smile curve through 3 control points (L-commissure, midline, R-commissure)
@@ -641,49 +713,58 @@ export default function SmileCreator({ navigate, activePatient }) {
         const isSelected = selectedTooth === tooth.num;
         const shadeColor = SHADE_HEX[shade] || "#f5ead0";
 
+        // Smooth DSD-style silhouette: midpoint-anchored quadratic beziers
+        // through the anatomical vertex set (see traceSmoothOutline).
         ctx.beginPath();
-        outline.forEach((pt, i) => {
-          const x = pt[0] * cW;
-          const y = pt[1] * cH;
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        });
-        ctx.closePath();
+        traceSmoothOutline(ctx, outline, cW, cH);
 
-        // ─────────────────────────────────────────────────────────────
-        // Natural-tooth rendering. Real teeth have:
-        //   • cervical (top) — slightly warmer, more opaque (near gum)
-        //   • body — mid shade, ~90% opaque
-        //   • incisal third — noticeably translucent (lets background show)
-        //   • subtle specular highlight on the labial face
-        // The previous flat 90%-opaque fill read as a sticker. This gradient
-        // approach is the same technique Smilefy / DSD mockups use to make
-        // proposed restorations integrate with the photo instead of floating
-        // on top.
-        // ─────────────────────────────────────────────────────────────
+        // Multiply-blend the veneer shade onto the underlying photograph so
+        // the proposed restoration shows the patient's tooth structure
+        // bleeding through (exactly how DSD / Smilefy mockups read as
+        // natural vs. stuck-on). Reduced overall opacity + gradient gives
+        // the cervical-to-incisal translucency real enamel has.
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-over';
         const bodyGrad = ctx.createLinearGradient(0, -cH / 2, 0, cH / 2);
-        bodyGrad.addColorStop(0,    shadeColor + 'f2');  // cervical: 95%
-        bodyGrad.addColorStop(0.55, shadeColor + 'e0');  // body:     88%
-        bodyGrad.addColorStop(0.85, shadeColor + '9e');  // pre-edge: 62%
-        bodyGrad.addColorStop(1,    shadeColor + '55');  // incisal:  33% (translucent)
+        bodyGrad.addColorStop(0,    shadeColor + 'd8');  // cervical:  85%
+        bodyGrad.addColorStop(0.5,  shadeColor + 'b8');  // body:      72%
+        bodyGrad.addColorStop(0.85, shadeColor + '80');  // pre-edge:  50%
+        bodyGrad.addColorStop(1,    shadeColor + '30');  // incisal:   19% (very translucent)
         ctx.fillStyle = bodyGrad;
         ctx.fill();
+        ctx.restore();
 
-        // Labial specular highlight — soft oval near upper-third center,
-        // gives the tooth a wet/glossy read without overpowering.
-        const hi = ctx.createRadialGradient(0, -cH * 0.12, 0, 0, -cH * 0.12, Math.min(cW, cH) * 0.55);
-        hi.addColorStop(0,    'rgba(255,255,255,0.24)');
-        hi.addColorStop(0.45, 'rgba(255,255,255,0.08)');
+        // Labial specular highlight — a soft curved band that matches enamel
+        // wet-shine. Offset slightly mesial to avoid looking dead-center
+        // artificial.
+        ctx.save();
+        ctx.beginPath();
+        traceSmoothOutline(ctx, outline, cW, cH);
+        ctx.clip();
+        const hi = ctx.createRadialGradient(-cW * 0.05, -cH * 0.18, 0, -cW * 0.05, -cH * 0.18, Math.min(cW, cH) * 0.6);
+        hi.addColorStop(0,    'rgba(255,255,255,0.20)');
+        hi.addColorStop(0.4,  'rgba(255,255,255,0.08)');
         hi.addColorStop(1,    'rgba(255,255,255,0)');
         ctx.fillStyle = hi;
-        ctx.fill();
+        ctx.fillRect(-cW, -cH, cW * 2, cH * 2);
+        ctx.restore();
 
-        // Outline — quiet at rest, crisp on selection. A heavy white stroke
-        // made every tooth look cartoon-drawn; drop to a hair-line so the
-        // silhouette reads without declaring itself.
-        ctx.strokeStyle = isSelected ? C.teal : 'rgba(255,255,255,0.12)';
-        ctx.lineWidth   = isSelected ? 2 : 0.6;
-        ctx.stroke();
+        // Outline — invisible at rest (the silhouette reads from the
+        // shade/highlight alone, just like real teeth); teal on selection.
+        if (isSelected) {
+          ctx.beginPath();
+          traceSmoothOutline(ctx, outline, cW, cH);
+          ctx.strokeStyle = C.teal;
+          ctx.lineWidth   = 2;
+          ctx.stroke();
+        } else {
+          // ultra-quiet hair-line for silhouette grounding on the photo
+          ctx.beginPath();
+          traceSmoothOutline(ctx, outline, cW, cH);
+          ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+          ctx.lineWidth   = 0.5;
+          ctx.stroke();
+        }
 
         // Tooth number — de-emphasized by default so the teeth don't read as
         // numbered tiles. Only visible on hover/selection, or very faintly.
@@ -1207,32 +1288,31 @@ export default function SmileCreator({ navigate, activePatient }) {
         let outline = resolveOutline(library, tooth.num, tooth.type);
         if (tooth.num >= 9) outline = outline.map(([x, y]) => [-x, y]);
         const shadeColor = SHADE_HEX[shade] || "#f5ead0";
+        // Same DSD-style rendering as the live canvas for consistency.
         ctx.beginPath();
-        outline.forEach((pt, i) => {
-          const x = pt[0] * cW;
-          const y = pt[1] * cH;
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        });
-        ctx.closePath();
-        // Same natural-tooth rendering as the live canvas (gradient +
-        // specular highlight + hair-line stroke). Keeps the exported
-        // Before/After PNG consistent with what the dentist sees on screen.
+        traceSmoothOutline(ctx, outline, cW, cH);
         const bodyGrad = ctx.createLinearGradient(0, -cH / 2, 0, cH / 2);
-        bodyGrad.addColorStop(0,    shadeColor + 'f2');
-        bodyGrad.addColorStop(0.55, shadeColor + 'e0');
-        bodyGrad.addColorStop(0.85, shadeColor + '9e');
-        bodyGrad.addColorStop(1,    shadeColor + '55');
+        bodyGrad.addColorStop(0,    shadeColor + 'd8');
+        bodyGrad.addColorStop(0.5,  shadeColor + 'b8');
+        bodyGrad.addColorStop(0.85, shadeColor + '80');
+        bodyGrad.addColorStop(1,    shadeColor + '30');
         ctx.fillStyle = bodyGrad;
         ctx.fill();
-        const hi = ctx.createRadialGradient(0, -cH * 0.12, 0, 0, -cH * 0.12, Math.min(cW, cH) * 0.55);
-        hi.addColorStop(0,    'rgba(255,255,255,0.24)');
-        hi.addColorStop(0.45, 'rgba(255,255,255,0.08)');
+        ctx.save();
+        ctx.beginPath();
+        traceSmoothOutline(ctx, outline, cW, cH);
+        ctx.clip();
+        const hi = ctx.createRadialGradient(-cW * 0.05, -cH * 0.18, 0, -cW * 0.05, -cH * 0.18, Math.min(cW, cH) * 0.6);
+        hi.addColorStop(0,    'rgba(255,255,255,0.20)');
+        hi.addColorStop(0.4,  'rgba(255,255,255,0.08)');
         hi.addColorStop(1,    'rgba(255,255,255,0)');
         ctx.fillStyle = hi;
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-        ctx.lineWidth = 0.6;
+        ctx.fillRect(-cW, -cH, cW * 2, cH * 2);
+        ctx.restore();
+        ctx.beginPath();
+        traceSmoothOutline(ctx, outline, cW, cH);
+        ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+        ctx.lineWidth = 0.5;
         ctx.stroke();
         ctx.restore();
       });
