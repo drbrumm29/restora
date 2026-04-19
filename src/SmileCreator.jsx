@@ -650,21 +650,56 @@ export default function SmileCreator({ navigate, activePatient }) {
         });
         ctx.closePath();
 
-        // Fill with shade color (semi-opaque for overlay effect)
-        ctx.fillStyle = shadeColor + "e6";  // ~90% alpha
+        // ─────────────────────────────────────────────────────────────
+        // Natural-tooth rendering. Real teeth have:
+        //   • cervical (top) — slightly warmer, more opaque (near gum)
+        //   • body — mid shade, ~90% opaque
+        //   • incisal third — noticeably translucent (lets background show)
+        //   • subtle specular highlight on the labial face
+        // The previous flat 90%-opaque fill read as a sticker. This gradient
+        // approach is the same technique Smilefy / DSD mockups use to make
+        // proposed restorations integrate with the photo instead of floating
+        // on top.
+        // ─────────────────────────────────────────────────────────────
+        const bodyGrad = ctx.createLinearGradient(0, -cH / 2, 0, cH / 2);
+        bodyGrad.addColorStop(0,    shadeColor + 'f2');  // cervical: 95%
+        bodyGrad.addColorStop(0.55, shadeColor + 'e0');  // body:     88%
+        bodyGrad.addColorStop(0.85, shadeColor + '9e');  // pre-edge: 62%
+        bodyGrad.addColorStop(1,    shadeColor + '55');  // incisal:  33% (translucent)
+        ctx.fillStyle = bodyGrad;
         ctx.fill();
 
-        // Stroke
-        ctx.strokeStyle = isSelected ? C.teal : "rgba(255,255,255,0.4)";
-        ctx.lineWidth = isSelected ? 2.5 : 1;
+        // Labial specular highlight — soft oval near upper-third center,
+        // gives the tooth a wet/glossy read without overpowering.
+        const hi = ctx.createRadialGradient(0, -cH * 0.12, 0, 0, -cH * 0.12, Math.min(cW, cH) * 0.55);
+        hi.addColorStop(0,    'rgba(255,255,255,0.24)');
+        hi.addColorStop(0.45, 'rgba(255,255,255,0.08)');
+        hi.addColorStop(1,    'rgba(255,255,255,0)');
+        ctx.fillStyle = hi;
+        ctx.fill();
+
+        // Outline — quiet at rest, crisp on selection. A heavy white stroke
+        // made every tooth look cartoon-drawn; drop to a hair-line so the
+        // silhouette reads without declaring itself.
+        ctx.strokeStyle = isSelected ? C.teal : 'rgba(255,255,255,0.12)';
+        ctx.lineWidth   = isSelected ? 2 : 0.6;
         ctx.stroke();
 
-        // Tooth number label
-        ctx.fillStyle = isSelected ? C.teal : "rgba(0,0,0,0.55)";
-        ctx.font = `bold ${Math.max(10, cH * 0.15)}px ` + C.font;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(`${tooth.num}`, 0, 0);
+        // Tooth number — de-emphasized by default so the teeth don't read as
+        // numbered tiles. Only visible on hover/selection, or very faintly.
+        if (isSelected) {
+          ctx.fillStyle = C.teal;
+          ctx.font = `600 ${Math.max(11, cH * 0.14)}px ${C.font}`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(`${tooth.num}`, 0, 0);
+        } else {
+          ctx.fillStyle = 'rgba(40,30,20,0.28)';
+          ctx.font = `500 ${Math.max(9, cH * 0.11)}px ${C.font}`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(`${tooth.num}`, 0, 0);
+        }
 
         // Selection handles (drawn in tooth local coord frame — already rotated)
         if (isSelected) {
@@ -1180,10 +1215,24 @@ export default function SmileCreator({ navigate, activePatient }) {
           else ctx.lineTo(x, y);
         });
         ctx.closePath();
-        ctx.fillStyle = shadeColor + 'e6';
+        // Same natural-tooth rendering as the live canvas (gradient +
+        // specular highlight + hair-line stroke). Keeps the exported
+        // Before/After PNG consistent with what the dentist sees on screen.
+        const bodyGrad = ctx.createLinearGradient(0, -cH / 2, 0, cH / 2);
+        bodyGrad.addColorStop(0,    shadeColor + 'f2');
+        bodyGrad.addColorStop(0.55, shadeColor + 'e0');
+        bodyGrad.addColorStop(0.85, shadeColor + '9e');
+        bodyGrad.addColorStop(1,    shadeColor + '55');
+        ctx.fillStyle = bodyGrad;
         ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-        ctx.lineWidth = 1;
+        const hi = ctx.createRadialGradient(0, -cH * 0.12, 0, 0, -cH * 0.12, Math.min(cW, cH) * 0.55);
+        hi.addColorStop(0,    'rgba(255,255,255,0.24)');
+        hi.addColorStop(0.45, 'rgba(255,255,255,0.08)');
+        hi.addColorStop(1,    'rgba(255,255,255,0)');
+        ctx.fillStyle = hi;
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+        ctx.lineWidth = 0.6;
         ctx.stroke();
         ctx.restore();
       });
