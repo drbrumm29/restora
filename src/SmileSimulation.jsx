@@ -278,7 +278,7 @@ Return JSON only:
         <div style={{ display:"flex", gap:10 }}>
           <label style={{ padding:"10px 16px", borderRadius:8, background:C.surface2, color:C.muted, border:`1px solid ${C.border}`, fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:C.sans }}>
             📸 Upload Photo
-            <input type="file" accept="image/*" style={{ display:"none" }} onChange={e=>handleFile(e.target.files?.[0])}/>
+            <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif" style={{ display:"none" }} onChange={e=>handleFile(e.target.files?.[0])}/>
           </label>
           {image && <button onClick={downloadResult} style={{ padding:"10px 16px", borderRadius:8, background:C.teal, color:"white", border:"none", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:C.sans }}>⬇ Save Preview</button>}
         </div>

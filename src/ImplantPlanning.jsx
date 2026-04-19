@@ -295,7 +295,7 @@ Return JSON only:
         <div style={{ display:"flex", gap:10 }}>
           <label style={{ padding:"10px 16px", borderRadius:10, background:C.surface2, color:C.muted, border:`1px solid ${C.border}`, fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:C.sans, letterSpacing:.1 }}>
             Upload radiograph
-            <input type="file" accept="image/*" style={{ display:"none" }} onChange={e=>handleFile(e.target.files?.[0])}/>
+            <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/tiff,image/bmp,.jpg,.jpeg,.png,.webp,.heic,.heif,.tif,.tiff,.bmp,.dcm" style={{ display:"none" }} onChange={e=>handleFile(e.target.files?.[0])}/>
           </label>
         </div>
       </div>

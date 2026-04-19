@@ -277,6 +277,7 @@ export default function SmileCreator({ navigate, activePatient }) {
   const [proportion, setProportion] = useState("golden");
   const [library, setLibrary] = useState("dannydesigner5");
   const [shade, setShade] = useState("BL2");
+  const [showAllShades, setShowAllShades] = useState(false);
   const [teeth, setTeeth] = useState([]);  // generated tooth data
   const [selectedTooth, setSelectedTooth] = useState(null);
   const [toothDragOffset, setToothDragOffset] = useState(null);
@@ -1892,8 +1893,8 @@ export default function SmileCreator({ navigate, activePatient }) {
                   textAlign: "center",
                   fontFamily: C.sans,
                 }}>
-                  📷 Upload retracted smile photo
-                  <input type="file" accept="image/*" style={{ display: "none" }}
+                  Upload retracted smile photo
+                  <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/tiff,.jpg,.jpeg,.png,.webp,.heic,.heif,.tif,.tiff" style={{ display: "none" }}
                     onChange={(e) => {
                       const f = e.target.files?.[0];
                       if (!f) return;
@@ -2057,7 +2058,7 @@ export default function SmileCreator({ navigate, activePatient }) {
               <div style={{ marginBottom: 22 }}>
                 <div style={{ fontSize: 11, color: C.muted, letterSpacing: 1, fontWeight: 600, marginBottom: 10, textTransform: "uppercase" }}>Shade</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
-                  {["BL1","BL2","BL3","BL4","A1","A2","A3","A3.5"].map(s => {
+                  {(showAllShades ? Object.keys(SHADE_HEX) : ["BL1","BL2","BL3","BL4","A1","A2","A3","A3.5"]).map(s => {
                     const isActive = shade === s;
                     return (
                       <button key={s}
@@ -2081,9 +2082,9 @@ export default function SmileCreator({ navigate, activePatient }) {
                     );
                   })}
                 </div>
-                <button onClick={() => { /* expand to show more shades */ }}
+                <button onClick={() => setShowAllShades(v => !v)}
                   style={{ marginTop: 6, width: "100%", padding: "6px", borderRadius: 6, background: "transparent", border: "none", color: C.muted, fontSize: 11, cursor: "pointer", fontFamily: C.sans }}>
-                  All shades ▾
+                  {showAllShades ? "Fewer shades ▴" : "All shades ▾"}
                 </button>
               </div>
 

@@ -120,11 +120,11 @@ export default function RadiographScreen() {
             onDrop={e=>{e.preventDefault();handleFile(e.dataTransfer.files?.[0]);}}
             onClick={()=>fileRef.current?.click()}
             style={{ border:`2px dashed ${C.tealBorder}`, borderRadius:12, padding:"80px 40px", textAlign:"center", cursor:"pointer", background:C.surface, transition:"all .15s" }}>
-            <div style={{ fontSize:40, marginBottom:16 }}>📸</div>
-            <div style={{ fontSize:18, fontWeight:700, marginBottom:8 }}>Drop a radiograph here</div>
-            <div style={{ fontSize:13, color:C.muted, marginBottom:20 }}>or click to browse · JPG, PNG, WebP</div>
-            <div style={{ fontSize:11, color:C.light }}>Panoramic · PA · Bitewing · Cephalometric · CBCT slice</div>
-            <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display:"none" }}
+            <div style={{ width:56, height:56, margin:"0 auto 16px", borderRadius:"50%", background:`${C.teal}15`, border:`1.5px solid ${C.teal}40`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, color:C.teal, fontFamily:C.font, fontWeight:300 }}>△</div>
+            <div style={{ fontSize:18, fontWeight:600, marginBottom:8, letterSpacing:"-.01em" }}>Drop a radiograph here</div>
+            <div style={{ fontSize:13, color:C.muted, marginBottom:20 }}>or click to browse &nbsp;·&nbsp; JPG · PNG · WebP · HEIC · TIFF · BMP</div>
+            <div style={{ fontSize:11, color:C.light }}>Panoramic · PA · Bitewing · Cephalometric · Occlusal · CBCT slice</div>
+            <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/tiff,image/bmp,.jpg,.jpeg,.png,.webp,.heic,.heif,.tif,.tiff,.bmp" style={{ display:"none" }}
               onChange={e=>handleFile(e.target.files?.[0])} />
           </div>
           <div style={{ padding:22, borderRadius:12, background:C.surface, border:`1px solid ${C.border}` }}>

@@ -1071,6 +1071,52 @@ export default function RestorationCAD({ navigate, activePatient }) {
 
           {/* Progression group */}
           <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+            {/* Import scan — user can drop in STL/OBJ/PLY from their own intra-oral
+                scanner output. Multiple files accepted; each becomes a mesh in the scene. */}
+            <label style={{ padding:"9px 14px", borderRadius:10, background:"transparent", color:C.ink, border:`1px solid ${C.border}`, fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:C.sans, letterSpacing:.1, display:"inline-flex", alignItems:"center", gap:6 }}>
+              Import scan
+              <input type="file" multiple accept=".stl,.obj,.ply,.glb,.gltf,model/stl,model/obj" style={{ display:"none" }}
+                onChange={async (e) => {
+                  const files = Array.from(e.target.files || []);
+                  if (!files.length) return;
+                  setLoading(true);
+                  const imported = [];
+                  for (const f of files) {
+                    try {
+                      const buf = await f.arrayBuffer();
+                      const ext = (f.name.split('.').pop() || '').toLowerCase();
+                      // STL parses natively; other formats will need loaders later.
+                      // Flag non-STL for now with a clear error in the console.
+                      if (ext !== 'stl') {
+                        console.warn(`Format .${ext} not yet supported in dev import. Converting to STL in a CAD app is currently required. File: ${f.name}`);
+                        continue;
+                      }
+                      const { positions, normals, triCount } = parseSTL(buf);
+                      // Guess slot from filename (upper/lower/bite); fall back to custom
+                      const lower = f.name.toLowerCase();
+                      const slot = lower.includes('upper') || lower.includes('max') ? 'upper'
+                                 : lower.includes('lower') || lower.includes('mand') ? 'lower'
+                                 : lower.includes('bite') ? 'bite'
+                                 : lower.includes('prep') ? 'prep'
+                                 : 'upper';
+                      imported.push({
+                        id: `user-${Date.now()}-${f.name}`,
+                        name: f.name, slot,
+                        label: f.name.replace(/\.stl$/i, '').replace(/_/g, ' '),
+                        positions, normals, triCount,
+                        color: FILE_COLORS[slot] ?? 0xe8d8c4,
+                        highlightColor: 0x0abab5,
+                        visible: true,
+                      });
+                    } catch (err) {
+                      console.error('Failed to import', f.name, err);
+                    }
+                  }
+                  if (imported.length > 0) setMeshes(ms => [...ms, ...imported]);
+                  setLoading(false);
+                  e.target.value = ''; // allow re-importing the same file
+                }} />
+            </label>
             <button onClick={exportDesign} disabled={meshes.length===0} style={{ padding:"9px 14px", borderRadius:10, background:"transparent", color:meshes.length?C.ink:C.muted, border:`1px solid ${C.border}`, fontSize:13, fontWeight:500, cursor:meshes.length?"pointer":"not-allowed", fontFamily:C.sans, letterSpacing:.1 }}>Export STL</button>
             <button onClick={()=>navigate && navigate('smile-creator')} style={{ padding:"10px 18px", borderRadius:10, background:C.teal, color:"white", border:"none", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:C.sans, boxShadow:`0 2px 8px ${C.teal}40`, letterSpacing:.1 }}>Design in Smile Creator →</button>
           </div>
