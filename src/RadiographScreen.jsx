@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { analyzeRadiograph, RADIOGRAPH_TYPES } from "./radiograph-analyzer.js";
+import { loadImageFromFile } from "./image-loaders.js";
 
 const C = {
   bg:"#0d1b2e", surface:"#132338", surface2:"#1a2f48", surface3:"#213858",
@@ -61,16 +62,22 @@ export default function RadiographScreen() {
   const [rawOut, setRawOut] = useState(null);
   const fileRef = useRef(null);
 
-  function handleFile(f) {
+  async function handleFile(f) {
     if (!f) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target.result; // data URL
-      const b64 = result.split(",")[1];
-      setImage({ b64, mime: f.type, name: f.name, url: result });
-      setResult(null); setError(null); setState("idle");
-    };
-    reader.readAsDataURL(f);
+    setError(null);
+    setState("loading");
+    try {
+      // loadImageFromFile transcodes HEIC → JPEG and DICOM → PNG so the
+      // Anthropic vision call downstream always receives a format it can
+      // read. Native JPG/PNG/WebP pass through unchanged.
+      const loaded = await loadImageFromFile(f);
+      const b64 = loaded.dataURL.split(",")[1];
+      setImage({ b64, mime: loaded.mimeType, name: loaded.originalName, url: loaded.dataURL });
+      setResult(null); setState("idle");
+    } catch (err) {
+      setError(`${f.name}: ${err.message || "Could not decode image"}`);
+      setState("error");
+    }
   }
 
   async function runAnalysis() {
@@ -100,16 +107,17 @@ export default function RadiographScreen() {
       {/* Header */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
         <div>
-          <div style={{ fontSize:32, fontWeight:800, letterSpacing:"-.03em", marginBottom:6 }}>Radiograph Analysis</div>
-          <div style={{ fontSize:14, color:C.muted }}>AI-assisted dental radiology reading · Board-certified radiologist standard</div>
+          <div style={{ fontSize:32, fontWeight:700, letterSpacing:"-.02em", marginBottom:6 }}>X-ray Analysis</div>
+          <div style={{ fontSize:14, color:C.muted }}>AI-assisted radiograph reading to board-certified radiologist standard.</div>
         </div>
         {image && <button onClick={reset} style={{ padding:"10px 18px", borderRadius:8, fontSize:13, fontWeight:600, border:`1px solid ${C.border}`, background:"transparent", color:C.muted, cursor:"pointer", fontFamily:C.sans }}>↺ New analysis</button>}
       </div>
 
-      {/* Anti-hallucination disclaimer */}
-      <div style={{ padding:"10px 14px", borderRadius:7, background:C.amberDim, border:`1px solid ${C.amber}40`, marginBottom:24, fontSize:12, color:C.muted, lineHeight:1.6 }}>
-        <strong style={{ color:C.amber }}>Clinical use:</strong> AI-assisted analysis does not replace professional judgment. All findings must be correlated with clinical examination. The radiologist prompt is engineered to refuse speculation — if a finding is not clearly visible, the AI will say so rather than invent one.
-      </div>
+      {/* Anti-hallucination disclaimer — condensed with expandable detail */}
+      <details style={{ padding:"10px 14px", borderRadius:10, background:C.amberDim, border:`1px solid ${C.amber}40`, marginBottom:24, fontSize:12, color:C.muted, lineHeight:1.6 }}>
+        <summary style={{ cursor:"pointer", listStyle:"none", color:C.amber, fontWeight:600 }}>⚠ Clinical use — AI assists, does not replace clinical judgment</summary>
+        <div style={{ marginTop:8 }}>All findings must be correlated with clinical examination. The radiologist prompt is engineered to refuse speculation — if a finding is not clearly visible, the AI will say so rather than invent one.</div>
+      </details>
 
       {/* Upload stage */}
       {!image && (
@@ -119,11 +127,11 @@ export default function RadiographScreen() {
             onDrop={e=>{e.preventDefault();handleFile(e.dataTransfer.files?.[0]);}}
             onClick={()=>fileRef.current?.click()}
             style={{ border:`2px dashed ${C.tealBorder}`, borderRadius:12, padding:"80px 40px", textAlign:"center", cursor:"pointer", background:C.surface, transition:"all .15s" }}>
-            <div style={{ fontSize:40, marginBottom:16 }}>📸</div>
-            <div style={{ fontSize:18, fontWeight:700, marginBottom:8 }}>Drop a radiograph here</div>
-            <div style={{ fontSize:13, color:C.muted, marginBottom:20 }}>or click to browse · JPG, PNG, WebP</div>
-            <div style={{ fontSize:11, color:C.light }}>Panoramic · PA · Bitewing · Cephalometric · CBCT slice</div>
-            <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display:"none" }}
+            <div style={{ width:56, height:56, margin:"0 auto 16px", borderRadius:"50%", background:`${C.teal}15`, border:`1.5px solid ${C.teal}40`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, color:C.teal, fontFamily:C.font, fontWeight:300 }}>△</div>
+            <div style={{ fontSize:18, fontWeight:600, marginBottom:8, letterSpacing:"-.01em" }}>Drop a radiograph here</div>
+            <div style={{ fontSize:13, color:C.muted, marginBottom:20 }}>or click to browse &nbsp;·&nbsp; JPG · PNG · WebP · HEIC · TIFF · BMP · DICOM</div>
+            <div style={{ fontSize:11, color:C.light }}>Panoramic · PA · Bitewing · Cephalometric · Occlusal · CBCT slice</div>
+            <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/tiff,image/bmp,application/dicom,.jpg,.jpeg,.png,.webp,.heic,.heif,.tif,.tiff,.bmp,.dcm,.dicom" style={{ display:"none" }}
               onChange={e=>handleFile(e.target.files?.[0])} />
           </div>
           <div style={{ padding:22, borderRadius:12, background:C.surface, border:`1px solid ${C.border}` }}>
