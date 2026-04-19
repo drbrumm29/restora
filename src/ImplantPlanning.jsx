@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { PATIENTS } from "./patient-cases.js";
+import { loadImageFromFile } from "./image-loaders.js";
 
 const C = {
   bg:"#0d1b2e", surface:"#132338", surface2:"#1a2f48", surface3:"#213858",
@@ -160,16 +161,19 @@ export default function ImplantPlanning({ navigate, activePatient }) {
 
   }, [loaded, pos, angle, size, brand, toothSite, pxPerMm, imgDims]);
 
-  function handleFile(f) {
+  async function handleFile(f) {
     if (!f) return;
-    const reader = new FileReader();
-    reader.onload = e => {
-      setImage(e.target.result);
-      setImageName(f.name);
+    try {
+      // Transcodes HEIC → JPEG and DICOM → PNG transparently.
+      const loaded = await loadImageFromFile(f);
+      setImage(loaded.dataURL);
+      setImageName(loaded.originalName);
       setLoaded(false);
       setReport(null);
-    };
-    reader.readAsDataURL(f);
+    } catch (err) {
+      console.error('Radiograph upload failed', err);
+      alert(`Could not load ${f.name}: ${err.message}`);
+    }
   }
 
   function canvasCoords(e) {
@@ -269,20 +273,33 @@ Return JSON only:
 
   const currentBrand = IMPLANTS.find(b => b.brand === brand);
 
+  // Active-patient guard: match the rest of the app's convention (like Smile Creator).
+  // Prevents the "No active patient" sidebar / "Implant Planning" header mismatch.
+  if (!activePatient) {
+    return (
+      <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", background:C.bg, color:C.muted, flexDirection:"column", gap:14, fontFamily:C.sans }}>
+        <div style={{ width:72, height:72, borderRadius:"50%", background:`${C.teal}15`, border:`1.5px solid ${C.teal}40`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, color:C.teal, fontFamily:C.font, fontWeight:300 }}>◆</div>
+        <div style={{ fontSize:20, color:C.ink, fontWeight:600, letterSpacing:"-.01em" }}>Select a patient to plan implants</div>
+        <div style={{ fontSize:13, maxWidth:360, textAlign:"center", lineHeight:1.55 }}>Choose a patient on the Dashboard, then return here to plan placement against their radiograph.</div>
+        <button onClick={()=>navigate && navigate('dashboard')} style={{ marginTop:6, padding:"10px 18px", borderRadius:10, background:C.teal, color:"white", border:"none", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:C.sans, letterSpacing:.1 }}>Go to Dashboard →</button>
+      </div>
+    );
+  }
+
   return (
     <div style={{ flex:1, display:"flex", flexDirection:"column", background:C.bg, color:C.ink, fontFamily:C.sans, overflow:"hidden" }}>
       {/* Header */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 22px", borderBottom:`1px solid ${C.border}`, gap:14, flexWrap:"wrap", flexShrink:0 }}>
         <div>
-          <div style={{ fontSize:22, fontWeight:800, letterSpacing:"-.02em" }}>Implant Planning</div>
+          <div style={{ fontSize:28, fontWeight:700, letterSpacing:"-.02em" }}>Implant Planning</div>
           <div style={{ fontSize:13, color:C.muted, marginTop:3 }}>
             {imageName ? `${imageName} · Tooth #${toothSite}` : "Load a radiograph to plan placement"}
           </div>
         </div>
         <div style={{ display:"flex", gap:10 }}>
-          <label style={{ padding:"10px 16px", borderRadius:8, background:C.surface2, color:C.muted, border:`1px solid ${C.border}`, fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:C.sans }}>
-            📸 Upload Radiograph
-            <input type="file" accept="image/*" style={{ display:"none" }} onChange={e=>handleFile(e.target.files?.[0])}/>
+          <label style={{ padding:"10px 16px", borderRadius:10, background:C.surface2, color:C.muted, border:`1px solid ${C.border}`, fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:C.sans, letterSpacing:.1 }}>
+            Upload radiograph
+            <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/tiff,image/bmp,.jpg,.jpeg,.png,.webp,.heic,.heif,.tif,.tiff,.bmp,.dcm" style={{ display:"none" }} onChange={e=>handleFile(e.target.files?.[0])}/>
           </label>
         </div>
       </div>
@@ -292,8 +309,8 @@ Return JSON only:
         <div style={{ flex:"1 1 500px", minWidth:300, display:"flex", alignItems:"center", justifyContent:"center", padding:20, background:"#000", overflow:"auto" }}>
           {!image && (
             <div style={{ textAlign:"center", color:C.muted }}>
-              <div style={{ fontSize:48, marginBottom:14 }}>🦷</div>
-              <div style={{ fontSize:15 }}>Upload a panoramic or periapical radiograph</div>
+              <div style={{ width:56, height:56, margin:"0 auto 14px", borderRadius:"50%", background:`${C.teal}15`, border:`1.5px solid ${C.teal}40`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, color:C.teal, fontFamily:C.font, fontWeight:300 }}>◆</div>
+              <div style={{ fontSize:15, color:C.ink, fontWeight:500 }}>Upload a panoramic or periapical radiograph</div>
               <div style={{ fontSize:12, marginTop:6 }}>Drag the implant to position · rotate to adjust angulation</div>
             </div>
           )}
@@ -366,8 +383,8 @@ Return JSON only:
           {/* AI analysis */}
           <div style={{ padding:18 }}>
             <button onClick={runSafetyAnalysis} disabled={!image || analyzing}
-              style={{ width:"100%", padding:"14px", borderRadius:8, background:analyzing?C.surface2:C.red, color:analyzing?C.muted:"white", border:"none", fontSize:14, fontWeight:700, cursor:analyzing||!image?"wait":"pointer", fontFamily:C.sans, marginBottom:14 }}>
-              {analyzing ? "⚡ Analyzing safety..." : "🛡 Run Safety Analysis"}
+              style={{ width:"100%", padding:"14px", borderRadius:10, background:analyzing?C.surface2:C.teal, color:analyzing?C.muted:"white", border:"none", fontSize:14, fontWeight:600, cursor:analyzing||!image?"wait":"pointer", fontFamily:C.sans, marginBottom:14, letterSpacing:.1 }}>
+              {analyzing ? "Analyzing safety…" : "Run Safety Analysis"}
             </button>
 
             {report && (

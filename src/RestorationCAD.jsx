@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import * as THREE from "three";
 import { PATIENTS } from "./patient-cases.js";
+import { loadMeshFromFile } from "./mesh-loaders.js";
+import { applyOps, describeOp } from "./waxup-ops.js";
+import { createVoiceInput } from "./voice-input.js";
 
 const C = {
   bg:"#0d1b2e", surface:"#132338", surface2:"#1a2f48", surface3:"#213858",
@@ -126,7 +129,7 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
       const y = r.dist * Math.cos(r.phi);
       const z = r.dist * Math.sin(r.phi) * Math.sin(r.theta);
       camera.position.set(x, y, z);
-      camera.lookAt(0, -4, 0);
+      camera.lookAt(0, 0, 0);
     };
     r.updateCamera = updateCamera;  // expose for preset animation
     updateCamera();
@@ -453,10 +456,12 @@ function STLViewer({ meshes, activeId, onSelect, wireframe, background, onStats,
       Object.values(meshObjectsRef.current).forEach(o => {
         o.position.set(-center.x, -center.y, -center.z);
       });
-      const teethBiasY = size.y * 0.30;  // lift teeth toward viewport center
-      rotateRef.current.centerOffset = { x:-center.x, y:-center.y + teethBiasY, z:-center.z };
+      // Meshes are shifted so the bounding-box center sits at the origin,
+      // which is the same point camera.lookAt() targets — keeps the scan
+      // centered in the viewport on initial load and after resize.
+      rotateRef.current.centerOffset = { x:-center.x, y:-center.y, z:-center.z };
       Object.values(meshObjectsRef.current).forEach(o => {
-        o.position.set(-center.x, -center.y + teethBiasY, -center.z);
+        o.position.set(-center.x, -center.y, -center.z);
       });
       rotateRef.current.hasInitialCentered = true;
       rotateRef.current.dist = Math.max(10, maxDim * 1.5);
@@ -617,6 +622,20 @@ export default function RestorationCAD({ navigate, activePatient }) {
   const [toothLabels, setToothLabels] = useState([]);  // [{num, x, y, z}, ...]
   const [pendingPick, setPendingPick] = useState(null); // { x, y, z }
   const [viewAngle, setViewAngle] = useState(null);    // 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom' | 'iso'
+  // Waxup state: baseline is the unmodified patient scan, waxupMeshes is
+  // the evolving proposed restoration. `showWaxup` controls which one the
+  // STLViewer renders. History lets the user see what was applied and
+  // revert to baseline. Voice state tracks live transcription.
+  const [waxupMeshes, setWaxupMeshes] = useState(null);   // null = no waxup yet; use baseline
+  const [showWaxup, setShowWaxup]     = useState(true);
+  const [waxupHistory, setWaxupHistory] = useState([]);   // array of { transcript, ops, timestamp }
+  const [voiceState, setVoiceState]   = useState('idle'); // idle | listening | processing
+  const [voiceTranscript, setVoiceTranscript] = useState('');
+  const [voiceError, setVoiceError]   = useState(null);
+  const voiceRef = useRef(null);
+  const [showControlsLegend, setShowControlsLegend] = useState(() => {
+    try { return localStorage.getItem('restora-controls-legend-dismissed') !== '1'; } catch { return true; }
+  });
   // Manual orientation flip — persisted per patient, lets user override auto-orient
   const [orientFlip, setOrientFlip] = useState(() => {
     try {
@@ -704,6 +723,11 @@ export default function RestorationCAD({ navigate, activePatient }) {
   useEffect(() => {
     if (!patient) return;
     setLoading(true); setError(null); setMeshes([]);
+    // Reset any in-progress waxup when patient changes — the modifications
+    // were relative to the previous patient's mesh and won't line up.
+    setWaxupMeshes(null);
+    setWaxupHistory([]);
+    setShowWaxup(true);
     (async () => {
       const out = [];
       for (const f of patient.files) {
@@ -980,9 +1004,93 @@ export default function RestorationCAD({ navigate, activePatient }) {
     setToothLabels(newLabels.sort((a,b) => a.num - b.num));
   }
 
+  // ── Voice-driven waxup ────────────────────────────────────────────
+  // Hold-to-talk flow:
+  //   1. user holds the Voice Waxup button
+  //   2. SpeechRecognition transcribes, updates voiceTranscript live
+  //   3. on release (or pause), POST transcript + labeled teeth to
+  //      /api/parse-waxup-command which returns structured ops
+  //   4. applyOps walks the current waxup state and emits new meshes
+  //   5. history stores the transcript + ops for recall / undo
+  function startVoiceWaxup() {
+    if (voiceState !== 'idle') return;
+    setVoiceError(null);
+    setVoiceTranscript('');
+    const v = createVoiceInput({
+      onPartial: (t) => setVoiceTranscript(t),
+      onFinal:   async (finalTranscript) => {
+        await dispatchWaxupCommand(finalTranscript);
+      },
+      onError: (e) => {
+        setVoiceError(e.message || String(e));
+        setVoiceState('idle');
+      },
+      onEnd: () => {
+        setVoiceState(prev => prev === 'listening' ? 'processing' : prev);
+      },
+    });
+    voiceRef.current = v;
+    if (!v.supported) { setVoiceError('Voice not supported in this browser.'); return; }
+    v.start();
+    setVoiceState('listening');
+  }
+
+  function stopVoiceWaxup() {
+    voiceRef.current?.stop();
+  }
+
+  async function dispatchWaxupCommand(transcript) {
+    setVoiceState('processing');
+    try {
+      const resp = await fetch('/api/parse-waxup-command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transcript,
+          availableTeeth: toothLabels.map(l => l.num),
+        }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.message || err.error || `Server ${resp.status}`);
+      }
+      const { ops } = await resp.json();
+      if (!ops || ops.length === 0) {
+        setVoiceError(toothLabels.length === 0
+          ? 'Label at least one tooth first, then try again.'
+          : 'No valid edits parsed from that instruction.');
+        setVoiceState('idle');
+        return;
+      }
+      // Apply to whichever mesh state is current — either the existing
+      // waxup, or clone from the baseline scan for the first edit.
+      const base = waxupMeshes || meshes.map(m => ({ ...m,
+        positions: new Float32Array(m.positions),
+        normals:   m.normals ? new Float32Array(m.normals) : null,
+      }));
+      const next = applyOps(base, toothLabels, ops);
+      setWaxupMeshes(next);
+      setShowWaxup(true);
+      setWaxupHistory(h => [...h, { transcript, ops, timestamp: Date.now() }]);
+      setVoiceTranscript('');
+    } catch (e) {
+      setVoiceError(e.message || String(e));
+    } finally {
+      setVoiceState('idle');
+    }
+  }
+
+  function revertWaxup() {
+    setWaxupMeshes(null);
+    setWaxupHistory([]);
+    setShowWaxup(false);
+  }
+
   function exportDesign() {
-    // Merge visible meshes into a single STL and download
-    const visible = meshes.filter(m => m.visible !== false);
+    // Merge visible meshes into a single STL and download. If a waxup
+    // exists and is currently shown, export that instead of baseline.
+    const sourceMeshes = (showWaxup && waxupMeshes) ? waxupMeshes : meshes;
+    const visible = sourceMeshes.filter(m => m.visible !== false);
     if (visible.length === 0) return;
     let totalTris = 0;
     visible.forEach(m => { totalTris += m.triCount; });
@@ -1013,7 +1121,8 @@ export default function RestorationCAD({ navigate, activePatient }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${patient.id}-design-${Date.now()}.stl`;
+    const suffix = (showWaxup && waxupMeshes) ? 'waxup' : 'design';
+    a.download = `${patient.id}-${suffix}-${Date.now()}.stl`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -1032,31 +1141,137 @@ export default function RestorationCAD({ navigate, activePatient }) {
       {/* Header bar */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 22px", borderBottom:`1px solid ${C.border}`, gap:14, flexWrap:"wrap", flexShrink:0 }}>
         <div>
-          <div style={{ fontSize:22, fontWeight:700, letterSpacing:"-.02em" }}>Scan Viewer</div>
+          <div style={{ fontSize:28, fontWeight:700, letterSpacing:"-.02em" }}>Scan Viewer</div>
           <div style={{ fontSize:13, color:C.muted, marginTop:2 }}>
             {patient?.name ? `${patient.name}${patient.teeth ? ' · ' + patient.teeth : ''}` : "No patient loaded"} · {stats.meshCount} mesh · {stats.triCount.toLocaleString()} tris
           </div>
         </div>
-        <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"center" }}>
-          <button onClick={()=>navigate && navigate('smile-creator')} style={{ padding:"10px 16px", borderRadius:8, background:`linear-gradient(135deg, ${C.teal}, ${C.purple})`, color:"white", border:"none", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:C.sans, boxShadow:`0 3px 12px ${C.teal}50` }}>😊 Design in Smile Creator →</button>
-          {/* Orientation flip controls — user can correct if auto-orient got it wrong */}
-          <div style={{ display:"flex", gap:4, padding:"4px", borderRadius:10, background:C.surface2, border:`1px solid ${C.border}` }}>
-            <span style={{ fontSize:11, color:C.muted, alignSelf:"center", padding:"0 8px", fontFamily:C.font, letterSpacing:1, fontWeight:700 }}>FLIP</span>
-            {['x','y','z'].map(axis => (
-              <button key={axis}
-                onClick={()=>setOrientFlip(f => ({ ...f, [axis]: !f[axis] }))}
-                title={axis === 'y' ? 'Flip upside-down / right-side-up' : axis === 'x' ? 'Mirror left-right' : 'Flip front-back'}
-                style={{
-                  width:34, height:30, borderRadius:6,
-                  background: orientFlip[axis] ? C.teal : 'transparent',
-                  color: orientFlip[axis] ? 'white' : C.ink,
-                  border:`1px solid ${orientFlip[axis] ? C.teal : C.borderSoft}`,
-                  fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:C.font, textTransform:"uppercase"
-                }}>{axis}</button>
-            ))}
+        {/* Scan Viewer header actions — split into two visual groups:
+            1. Viewport tools (FLIP + Wireframe) — quiet neutral controls grouped together
+            2. Progression (Export + Design in Smile Creator) — the two forward moves */}
+        <div style={{ display:"flex", gap:14, flexWrap:"wrap", alignItems:"center" }}>
+          {/* Viewport tools group */}
+          <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+            <div style={{ display:"flex", gap:4, padding:"4px", borderRadius:10, background:C.surface2, border:`1px solid ${C.border}` }}>
+              <span style={{ fontSize:10, color:C.muted, alignSelf:"center", padding:"0 8px", fontFamily:C.font, letterSpacing:1.5, fontWeight:600 }}>FLIP</span>
+              {['x','y','z'].map(axis => (
+                <button key={axis}
+                  onClick={()=>setOrientFlip(f => ({ ...f, [axis]: !f[axis] }))}
+                  title={axis === 'y' ? 'Flip upside-down / right-side-up' : axis === 'x' ? 'Mirror left-right' : 'Flip front-back'}
+                  style={{
+                    width:32, height:28, borderRadius:6,
+                    background: orientFlip[axis] ? C.teal : 'transparent',
+                    color: orientFlip[axis] ? 'white' : C.muted,
+                    border:`1px solid ${orientFlip[axis] ? C.teal : 'transparent'}`,
+                    fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:C.font, textTransform:"uppercase", transition:"all .15s"
+                  }}>{axis}</button>
+              ))}
+            </div>
+            <button onClick={()=>setWire(w=>!w)} style={{ padding:"9px 14px", borderRadius:10, background:wireframe?C.tealDim:"transparent", color:wireframe?C.teal:C.muted, border:`1px solid ${wireframe?C.teal+"60":C.border}`, fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:C.sans, letterSpacing:.1 }}>Wireframe{wireframe?" ✓":""}</button>
+            {/* Before/after toggle — only shown once a waxup exists */}
+            {waxupMeshes && (
+              <div style={{ display:"flex", gap:0, padding:2, borderRadius:10, background:C.surface2, border:`1px solid ${C.border}` }}>
+                <button onClick={()=>setShowWaxup(false)}
+                  style={{ padding:"7px 12px", borderRadius:8, background:showWaxup?"transparent":C.surface, color:showWaxup?C.muted:C.ink, border:"none", fontSize:12, fontWeight:500, cursor:"pointer", fontFamily:C.sans, letterSpacing:.1 }}>Before</button>
+                <button onClick={()=>setShowWaxup(true)}
+                  style={{ padding:"7px 12px", borderRadius:8, background:showWaxup?C.teal:"transparent", color:showWaxup?"white":C.muted, border:"none", fontSize:12, fontWeight:showWaxup?600:500, cursor:"pointer", fontFamily:C.sans, letterSpacing:.1 }}>After</button>
+              </div>
+            )}
           </div>
-          <button onClick={()=>setWire(w=>!w)} style={{ padding:"10px 16px", borderRadius:8, background:wireframe?C.tealDim:C.surface2, color:wireframe?C.teal:C.muted, border:`1px solid ${wireframe?C.tealBorder:C.border}`, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:C.sans }}>{wireframe?"✓ Wireframe":"Wireframe"}</button>
-          <button onClick={exportDesign} disabled={meshes.length===0} style={{ padding:"10px 16px", borderRadius:8, background:meshes.length?C.teal:C.surface2, color:meshes.length?"white":C.muted, border:"none", fontSize:14, fontWeight:700, cursor:meshes.length?"pointer":"not-allowed", fontFamily:C.sans }}>⬇ Export Scan STL</button>
+
+          {/* Divider */}
+          <div style={{ width:1, height:28, background:C.border }} />
+
+          {/* Voice waxup group — hold-to-talk button + live feedback.
+              Sits between viewport tools and the progression CTA so dentist
+              sees it as a first-class authoring action, not a side tool. */}
+          <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+            <button
+              onMouseDown={startVoiceWaxup}
+              onMouseUp={stopVoiceWaxup}
+              onMouseLeave={() => { if (voiceState === 'listening') stopVoiceWaxup(); }}
+              onTouchStart={(e) => { e.preventDefault(); startVoiceWaxup(); }}
+              onTouchEnd={(e) => { e.preventDefault(); stopVoiceWaxup(); }}
+              disabled={voiceState === 'processing'}
+              title={toothLabels.length === 0
+                ? 'Label at least one tooth (🏷 Label Teeth) before using voice waxup'
+                : 'Hold and speak: "make number eight a millimeter longer"'}
+              style={{
+                padding:"9px 14px", borderRadius:10,
+                background: voiceState === 'listening' ? C.red : voiceState === 'processing' ? C.surface2 : C.surface2,
+                color: voiceState === 'listening' ? 'white' : (voiceState === 'processing' ? C.muted : C.ink),
+                border: `1px solid ${voiceState === 'listening' ? C.red : C.border}`,
+                fontSize:13, fontWeight:500, cursor: voiceState === 'processing' ? 'wait' : 'pointer',
+                fontFamily:C.sans, letterSpacing:.1,
+                display:"inline-flex", alignItems:"center", gap:8,
+                transition:"all .15s",
+              }}>
+              <span style={{ width:8, height:8, borderRadius:"50%", background: voiceState === 'listening' ? 'white' : voiceState === 'processing' ? C.amber : C.muted, boxShadow: voiceState === 'listening' ? `0 0 8px ${C.red}` : 'none', transition:'all .15s' }} />
+              {voiceState === 'listening' ? 'Listening…' : voiceState === 'processing' ? 'Thinking…' : 'Hold to waxup'}
+            </button>
+            {waxupHistory.length > 0 && (
+              <button onClick={revertWaxup}
+                title="Discard waxup and revert to original scan"
+                style={{ padding:"9px 12px", borderRadius:10, background:"transparent", color:C.muted, border:`1px solid ${C.border}`, fontSize:12, fontWeight:500, cursor:"pointer", fontFamily:C.sans }}>
+                Revert
+              </button>
+            )}
+          </div>
+
+          {/* Divider */}
+          <div style={{ width:1, height:28, background:C.border }} />
+
+          {/* Progression group */}
+          <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+            {/* Import scan — user can drop in STL/OBJ/PLY from their own intra-oral
+                scanner output. Multiple files accepted; each becomes a mesh in the scene. */}
+            <label style={{ padding:"9px 14px", borderRadius:10, background:"transparent", color:C.ink, border:`1px solid ${C.border}`, fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:C.sans, letterSpacing:.1, display:"inline-flex", alignItems:"center", gap:6 }}>
+              Import scan
+              <input type="file" multiple accept=".stl,.obj,.ply,.glb,.gltf,model/stl,model/obj,model/gltf-binary,model/gltf+json" style={{ display:"none" }}
+                onChange={async (e) => {
+                  const files = Array.from(e.target.files || []);
+                  if (!files.length) return;
+                  setLoading(true);
+                  const imported = [];
+                  for (const f of files) {
+                    try {
+                      const ext = (f.name.split('.').pop() || '').toLowerCase();
+                      let mesh;
+                      if (ext === 'stl') {
+                        const buf = await f.arrayBuffer();
+                        mesh = parseSTL(buf);
+                      } else {
+                        mesh = await loadMeshFromFile(f);
+                      }
+                      const { positions, normals, triCount } = mesh;
+                      const lower = f.name.toLowerCase();
+                      const slot = lower.includes('upper') || lower.includes('max') ? 'upper'
+                                 : lower.includes('lower') || lower.includes('mand') ? 'lower'
+                                 : lower.includes('bite') ? 'bite'
+                                 : lower.includes('prep') ? 'prep'
+                                 : 'upper';
+                      imported.push({
+                        id: `user-${Date.now()}-${f.name}`,
+                        name: f.name, slot,
+                        label: f.name.replace(/\.(stl|obj|ply|glb|gltf)$/i, '').replace(/_/g, ' '),
+                        positions, normals, triCount,
+                        color: FILE_COLORS[slot] ?? 0xe8d8c4,
+                        highlightColor: 0x0abab5,
+                        visible: true,
+                      });
+                    } catch (err) {
+                      console.error('Failed to import', f.name, err);
+                      setError(`${f.name}: ${err.message}`);
+                    }
+                  }
+                  if (imported.length > 0) setMeshes(ms => [...ms, ...imported]);
+                  setLoading(false);
+                  e.target.value = '';
+                }} />
+            </label>
+            <button onClick={exportDesign} disabled={meshes.length===0} style={{ padding:"9px 14px", borderRadius:10, background:"transparent", color:meshes.length?C.ink:C.muted, border:`1px solid ${C.border}`, fontSize:13, fontWeight:500, cursor:meshes.length?"pointer":"not-allowed", fontFamily:C.sans, letterSpacing:.1 }}>Export STL</button>
+            <button onClick={()=>navigate && navigate('smile-creator')} style={{ padding:"10px 18px", borderRadius:10, background:C.teal, color:"white", border:"none", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:C.sans, boxShadow:`0 2px 8px ${C.teal}40`, letterSpacing:.1 }}>Design in Smile Creator →</button>
+          </div>
         </div>
       </div>
 
@@ -1065,7 +1280,7 @@ export default function RestorationCAD({ navigate, activePatient }) {
         {/* Viewer */}
         <div style={{ flex:1, position:"relative", minWidth:0, background:"#2b3540" }}>
           <STLViewer
-            meshes={meshes}
+            meshes={(showWaxup && waxupMeshes) ? waxupMeshes : meshes}
             activeId={activeId}
             onSelect={setActive}
             wireframe={wireframe}
@@ -1085,14 +1300,54 @@ export default function RestorationCAD({ navigate, activePatient }) {
             </div>
           )}
 
+          {/* Voice waxup — live transcript panel. Anchored top-center so the
+              dentist can see what the mic heard in real time without moving
+              attention from the scan. */}
+          {(voiceState !== 'idle' || voiceTranscript || voiceError) && (
+            <div style={{ position:"absolute", top:20, left:"50%", transform:"translateX(-50%)", minWidth:360, maxWidth:560, padding:"14px 18px", borderRadius:14, background:"rgba(19,35,56,0.72)", border:`1px solid ${voiceState==='listening' ? C.red+"80" : "rgba(255,255,255,0.08)"}`, backdropFilter:"blur(16px) saturate(1.4)", WebkitBackdropFilter:"blur(16px) saturate(1.4)", zIndex:5, fontFamily:C.sans, transition:"all .2s" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom: voiceTranscript || voiceError ? 8 : 0 }}>
+                <span style={{ width:10, height:10, borderRadius:"50%", background: voiceState==='listening' ? C.red : voiceState==='processing' ? C.amber : C.muted, boxShadow: voiceState==='listening' ? `0 0 10px ${C.red}` : 'none' }} />
+                <span style={{ fontSize:11, color:C.muted, fontFamily:C.font, letterSpacing:1.5, fontWeight:600 }}>
+                  {voiceState==='listening' ? 'LISTENING' : voiceState==='processing' ? 'INTERPRETING' : 'VOICE WAXUP'}
+                </span>
+              </div>
+              {voiceTranscript && (
+                <div style={{ fontSize:15, color:C.ink, lineHeight:1.5, fontWeight:500 }}>
+                  "{voiceTranscript}"
+                </div>
+              )}
+              {voiceError && (
+                <div style={{ fontSize:13, color:C.amber, lineHeight:1.5 }}>
+                  {voiceError}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Waxup history strip — shows each applied edit so the dentist can
+              see what's already been done. Lives along the top-right, below
+              the tooth-number banner, to avoid overlapping the Meshes panel. */}
+          {waxupHistory.length > 0 && (
+            <div style={{ position:"absolute", top:70, right:280, maxWidth:340, padding:"12px 14px", borderRadius:12, background:"rgba(19,35,56,0.72)", border:`1px solid rgba(255,255,255,0.08)`, backdropFilter:"blur(16px) saturate(1.4)", WebkitBackdropFilter:"blur(16px) saturate(1.4)", zIndex:4, fontFamily:C.sans }}>
+              <div style={{ fontSize:10, color:C.teal, fontFamily:C.font, letterSpacing:1.5, fontWeight:600, marginBottom:8 }}>WAXUP HISTORY · {waxupHistory.reduce((n,h)=>n+h.ops.length,0)} edits</div>
+              <div style={{ display:"flex", flexDirection:"column", gap:4, maxHeight:160, overflow:"auto" }}>
+                {waxupHistory.slice(-6).map((h, idx) => (
+                  <div key={h.timestamp} style={{ fontSize:11, color:C.muted, lineHeight:1.5 }}>
+                    {h.ops.map(describeOp).join(' · ')}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Universal numbering orientation — always visible */}
           {meshes.length > 0 && (
             <div style={{ position:"absolute", top:16, left:16, right: labelMode ? 420 : 260, display:"flex", justifyContent:"space-between", alignItems:"center", padding:"0 14px", pointerEvents:"none", zIndex:2 }}>
-              <div style={{ padding:"8px 14px", borderRadius:8, background:C.surface+"dd", border:`1px solid ${C.border}`, backdropFilter:"blur(6px)", fontSize:13, color:C.ink, fontFamily:C.font, letterSpacing:1, fontWeight:700 }}>
-                ← PATIENT RIGHT (#1-#16)
+              <div style={{ padding:"10px 16px", borderRadius:999, background:"rgba(19,35,56,0.55)", border:`1px solid rgba(255,255,255,0.08)`, backdropFilter:"blur(16px) saturate(1.4)", WebkitBackdropFilter:"blur(16px) saturate(1.4)", fontSize:12, color:C.ink, fontFamily:C.font, letterSpacing:1.2, fontWeight:600 }}>
+                ← PATIENT RIGHT · upper #1–#8 · lower #25–#32
               </div>
-              <div style={{ padding:"8px 14px", borderRadius:8, background:C.surface+"dd", border:`1px solid ${C.border}`, backdropFilter:"blur(6px)", fontSize:13, color:C.ink, fontFamily:C.font, letterSpacing:1, fontWeight:700 }}>
-                PATIENT LEFT (#17-#32) →
+              <div style={{ padding:"10px 16px", borderRadius:999, background:"rgba(19,35,56,0.55)", border:`1px solid rgba(255,255,255,0.08)`, backdropFilter:"blur(16px) saturate(1.4)", WebkitBackdropFilter:"blur(16px) saturate(1.4)", fontSize:12, color:C.ink, fontFamily:C.font, letterSpacing:1.2, fontWeight:600 }}>
+                PATIENT LEFT · upper #9–#16 · lower #17–#24 →
               </div>
             </div>
           )}
@@ -1191,12 +1446,18 @@ export default function RestorationCAD({ navigate, activePatient }) {
             ))}
           </div>
 
-          {/* Legend */}
-          <div style={{ position:"absolute", bottom:16, left:16, padding:"12px 16px", borderRadius:8, background:C.surface+"dd", border:`1px solid ${C.border}`, fontSize:16, color:C.ink, backdropFilter:"blur(6px)" }}>
-            <div style={{ fontFamily:C.font, letterSpacing:1.5, color:C.teal, fontWeight:700, marginBottom:6, fontSize:15 }}>CONTROLS</div>
-            <div>Drag · rotate · Scroll · zoom</div>
-            <div style={{ marginTop:4 }}>Touch: drag + pinch on mobile</div>
-          </div>
+          {/* Legend — shown on first visit, dismissible, remembers dismissal */}
+          {showControlsLegend && (
+            <div style={{ position:"absolute", bottom:16, left:16, padding:"12px 16px", borderRadius:12, background:"rgba(19,35,56,0.55)", border:`1px solid rgba(255,255,255,0.08)`, fontSize:13, color:C.ink, backdropFilter:"blur(16px) saturate(1.4)", WebkitBackdropFilter:"blur(16px) saturate(1.4)", display:"flex", alignItems:"center", gap:14 }}>
+              <div>
+                <div style={{ fontFamily:C.font, letterSpacing:1.5, color:C.teal, fontWeight:600, marginBottom:4, fontSize:10 }}>CONTROLS</div>
+                <div style={{ fontSize:12, color:C.muted, lineHeight:1.5 }}>Drag · rotate &nbsp;·&nbsp; Scroll · zoom &nbsp;·&nbsp; Touch: drag + pinch</div>
+              </div>
+              <button onClick={() => { try { localStorage.setItem('restora-controls-legend-dismissed','1'); } catch {} setShowControlsLegend(false); }}
+                aria-label="Dismiss controls hint"
+                style={{ width:22, height:22, borderRadius:"50%", border:"none", background:"rgba(255,255,255,0.08)", color:C.muted, cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}>×</button>
+            </div>
+          )}
 
           {/* Library picker (overlay) */}
           {showLib && (
@@ -1388,8 +1649,8 @@ export default function RestorationCAD({ navigate, activePatient }) {
 
           {/* Footer actions */}
           <div style={{ padding:"16px 20px", borderTop:`1px solid ${C.border}`, display:"flex", flexDirection:"column", gap:10 }}>
-            <button onClick={()=>navigate && navigate('design-bridge')} style={{ padding:"13px", borderRadius:8, background:C.surface2, color:C.ink, border:`1px solid ${C.border}`, fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:C.sans }}>← Back to Design Bridge</button>
-            <button onClick={()=>navigate && navigate('export')} disabled={meshes.length===0} style={{ padding:"14px", borderRadius:8, background:meshes.length?C.teal:C.surface2, color:meshes.length?"white":C.muted, border:"none", fontSize:15, fontWeight:700, cursor:meshes.length?"pointer":"not-allowed", fontFamily:C.sans }}>Send to Export →</button>
+            <button onClick={()=>navigate && navigate('dashboard')} style={{ padding:"12px", borderRadius:10, background:"transparent", color:C.muted, border:`1px solid ${C.border}`, fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:C.sans }}>← Dashboard</button>
+            <button onClick={()=>navigate && navigate('export')} disabled={meshes.length===0} style={{ padding:"14px", borderRadius:10, background:meshes.length?C.teal:C.surface2, color:meshes.length?"white":C.muted, border:"none", fontSize:15, fontWeight:600, cursor:meshes.length?"pointer":"not-allowed", fontFamily:C.sans, letterSpacing:.1 }}>Send to Export →</button>
           </div>
         </div>
       </div>

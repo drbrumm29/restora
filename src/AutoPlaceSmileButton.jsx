@@ -72,7 +72,7 @@ export default function AutoPlaceSmileButton({
           border: 'none',
           background: loading
             ? '#6b7280'
-            : 'linear-gradient(135deg, #8b5cf6, #3b82f6)',
+            : '#0abab5',
           color: 'white',
           fontWeight: 600,
           fontSize: 14,

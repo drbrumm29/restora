@@ -12,8 +12,8 @@ export default async function handler(req, res) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return res.status(500).json({
-      error: "Server not configured",
-      message: "ANTHROPIC_API_KEY environment variable is not set in Vercel. Add it under Project Settings → Environment Variables.",
+      error: "ANTHROPIC_API_KEY not configured",
+      message: "Create .env.local in the project root with ANTHROPIC_API_KEY=sk-ant-... (local dev) or set it in Vercel → Project Settings → Environment Variables (production), then reload.",
     });
   }
 

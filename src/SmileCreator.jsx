@@ -12,6 +12,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import TOOTH_SILHOUETTES from "./tooth-silhouettes.json";
 import AutoPlaceSmileButton from "./AutoPlaceSmileButton";
+import { loadImageFromFile } from "./image-loaders.js";
 
 const C = {
   bg:"#0d1b2e", surface:"#132338", surface2:"#1a2f48", surface3:"#213858",
@@ -62,31 +63,80 @@ const PROPORTIONS = {
 // Each path is an array of [x, y] points forming a closed polygon.
 // 4 tooth types: central, lateral, canine, premolar.
 
+// ─────────────────────────────────────────────────────────────────────
+// DSD-style anatomical tooth silhouettes.
+// Canonical outlines for patient-RIGHT upper teeth (#4-#8) drawn in a
+// labial (frontal) view. Patient-LEFT teeth (#9-#13) reuse these outlines
+// with an x-flip at render time.
+//
+// Coordinate frame (unit square, origin at tooth center):
+//   x = mesial/distal. For patient-right teeth: +x = mesial (toward
+//   midline), -x = distal (toward back of mouth).
+//   y = -0.5 cervical (gum line), +0.5 incisal (biting edge).
+//
+// Each outline is dense (~36 vertices) and traversed incisal→mesial→
+// cervical→distal→incisal so the curve smoother (drawSmoothPolygon) can
+// produce a continuous, natural silhouette. Shapes reference natural
+// tooth anatomy — AACD / Chu proportions, Fradeani morphology:
+//   • central  — trapezoidal, slight incisal convexity, mesial edge
+//                straighter than distal edge (asymmetry ≈ 8%)
+//   • lateral  — ovoid, cervical constriction, clearly smaller than
+//                the central (~80% width)
+//   • canine   — pointed cusp tip slightly distal of center, mesial
+//                slope shorter than distal slope, robust cervical bulge
+//   • premolar — wider than canine, broad rounded cusp, clear
+//                buccal convexity
+// ─────────────────────────────────────────────────────────────────────
 const TOOTH_OUTLINES = {
-  // CENTRAL INCISOR — boxy, slight incisal curve, corners rounded
   central: [
-    [-0.47, -0.45], [-0.48, -0.15], [-0.45, +0.15], [-0.35, +0.42], [-0.15, +0.48],
-    [+0.15, +0.48], [+0.35, +0.42], [+0.45, +0.15], [+0.48, -0.15], [+0.47, -0.45],
-    [+0.38, -0.48], [+0.20, -0.50], [0, -0.50], [-0.20, -0.50], [-0.38, -0.48],
+    // incisal edge (bottom) — subtle convex curve with mesial corner
+    // slightly sharper than distal (natural asymmetry)
+    [-0.42, +0.48], [-0.30, +0.49], [-0.15, +0.50], [0.00, +0.50],
+    [+0.16, +0.50], [+0.32, +0.49], [+0.44, +0.46],
+    // mesial edge (right side in canonical frame = toward midline)
+    [+0.46, +0.36], [+0.46, +0.22], [+0.45, +0.06], [+0.44, -0.10],
+    [+0.43, -0.24], [+0.41, -0.36], [+0.38, -0.44],
+    // cervical curve (top, gum line) — slight coronal convexity
+    [+0.30, -0.48], [+0.18, -0.50], [+0.02, -0.50], [-0.14, -0.50], [-0.28, -0.48],
+    // distal edge (left side) — slightly curved
+    [-0.36, -0.44], [-0.40, -0.36], [-0.42, -0.24], [-0.44, -0.10],
+    [-0.45, +0.06], [-0.45, +0.22], [-0.44, +0.36],
   ],
-  // LATERAL INCISOR — more rounded, smaller, ovoid
   lateral: [
-    [-0.42, -0.35], [-0.46, -0.05], [-0.42, +0.22], [-0.30, +0.42], [-0.12, +0.48],
-    [+0.12, +0.48], [+0.30, +0.42], [+0.42, +0.22], [+0.46, -0.05], [+0.42, -0.35],
-    [+0.30, -0.45], [+0.10, -0.48], [-0.10, -0.48], [-0.30, -0.45],
+    // ovoid: smaller + rounder than central, cervical constriction
+    [-0.34, +0.46], [-0.22, +0.48], [-0.08, +0.48], [+0.08, +0.48],
+    [+0.22, +0.47], [+0.34, +0.44],
+    [+0.38, +0.34], [+0.40, +0.20], [+0.40, +0.04], [+0.39, -0.12],
+    [+0.37, -0.26], [+0.33, -0.38],
+    [+0.24, -0.44], [+0.10, -0.46], [-0.04, -0.46], [-0.18, -0.45], [-0.28, -0.42],
+    [-0.34, -0.34], [-0.37, -0.22], [-0.39, -0.06], [-0.39, +0.10],
+    [-0.38, +0.24], [-0.36, +0.36],
   ],
-  // CANINE — pointed incisal tip, robust, slightly asymmetric (mesial longer than distal)
   canine: [
-    [-0.40, -0.15], [-0.46, +0.10], [-0.42, +0.35], [-0.28, +0.46], [-0.08, +0.48],
-    [+0.10, +0.48], [+0.32, +0.42], [+0.45, +0.22], [+0.48, -0.05], [+0.42, -0.28],
-    [+0.25, -0.45], [+0.05, -0.50], [-0.15, -0.48], [-0.32, -0.38],
+    // pointed cusp — tip slightly distal of center (natural canine)
+    [-0.06, +0.50], [+0.02, +0.49],
+    // mesial slope (shorter, steeper)
+    [+0.18, +0.44], [+0.32, +0.36], [+0.42, +0.22],
+    // mesial edge down to cervical
+    [+0.46, +0.06], [+0.47, -0.10], [+0.46, -0.26], [+0.42, -0.38],
+    // cervical — robust, slightly triangular from facial
+    [+0.32, -0.46], [+0.18, -0.50], [+0.04, -0.50], [-0.12, -0.50], [-0.26, -0.48],
+    // distal edge
+    [-0.36, -0.42], [-0.42, -0.32], [-0.44, -0.18], [-0.44, -0.02],
+    [-0.42, +0.14], [-0.38, +0.28],
+    // distal slope (longer, shallower, meets the cusp tip)
+    [-0.30, +0.38], [-0.20, +0.44], [-0.12, +0.48],
   ],
-  // PREMOLAR — buccal cusp + smaller lingual cusp silhouette when viewed facially
-  // From facial view it looks like a wider canine with more rounded cusp tip
   premolar: [
-    [-0.40, -0.10], [-0.45, +0.15], [-0.40, +0.38], [-0.25, +0.48], [-0.08, +0.50],
-    [+0.10, +0.50], [+0.28, +0.46], [+0.42, +0.30], [+0.46, +0.05], [+0.42, -0.22],
-    [+0.25, -0.42], [+0.05, -0.48], [-0.18, -0.45], [-0.35, -0.32],
+    // Broad rounded cusp silhouette from facial view. Wider than canine,
+    // flatter cusp tip.
+    [-0.26, +0.48], [-0.12, +0.50], [+0.02, +0.50], [+0.16, +0.50], [+0.28, +0.48],
+    [+0.38, +0.42], [+0.44, +0.32],
+    [+0.46, +0.18], [+0.46, +0.02], [+0.45, -0.14], [+0.42, -0.28],
+    [+0.36, -0.38],
+    [+0.26, -0.44], [+0.12, -0.46], [-0.02, -0.46], [-0.16, -0.46], [-0.28, -0.44],
+    [-0.36, -0.38], [-0.42, -0.28], [-0.45, -0.14], [-0.46, +0.02], [-0.46, +0.18],
+    [-0.44, +0.32], [-0.38, +0.42],
   ],
 };
 
@@ -129,6 +179,29 @@ const SHADE_HEX = {
   "B1":   "#f8ecd0", "B2":   "#f2deb8", "B3":   "#eacfa0",
   "C1":   "#e8d8b8", "C2":   "#ddc8a0",
 };
+
+// Build a smooth closed path through the given vertices using quadratic
+// bezier segments whose control points are the original vertices and whose
+// on-curve anchors are vertex midpoints. This is the classic "smooth polygon"
+// technique — the curve hits every midpoint and uses each vertex as a
+// control handle, producing a natural, anatomically-plausible silhouette
+// (no sharp polygon corners). Input is [[x, y], ...] in the tooth-local
+// -0.5..+0.5 frame; xs/ys are the pre-scaled canvas pixels.
+function traceSmoothOutline(ctx, verts, xs, ys) {
+  if (verts.length < 3) return;
+  const p = verts.map(([x, y]) => [x * xs, y * ys]);
+  const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  // Start at midpoint of last→first so the curve closes seamlessly.
+  const start = mid(p[p.length - 1], p[0]);
+  ctx.moveTo(start[0], start[1]);
+  for (let i = 0; i < p.length; i++) {
+    const current = p[i];
+    const next = p[(i + 1) % p.length];
+    const m = mid(current, next);
+    ctx.quadraticCurveTo(current[0], current[1], m[0], m[1]);
+  }
+  ctx.closePath();
+}
 
 // ── Geometry helpers ───────────────────────────────────────────────
 // Parabolic smile curve through 3 control points (L-commissure, midline, R-commissure)
@@ -205,6 +278,7 @@ export default function SmileCreator({ navigate, activePatient }) {
   const [proportion, setProportion] = useState("golden");
   const [library, setLibrary] = useState("dannydesigner5");
   const [shade, setShade] = useState("BL2");
+  const [showAllShades, setShowAllShades] = useState(false);
   const [teeth, setTeeth] = useState([]);  // generated tooth data
   const [selectedTooth, setSelectedTooth] = useState(null);
   const [toothDragOffset, setToothDragOffset] = useState(null);
@@ -425,21 +499,38 @@ export default function SmileCreator({ navigate, activePatient }) {
         transform.offsetX, transform.offsetY,
         transform.imgW, transform.imgH
       );
+
+      // Mask photographer burn-in labels at the bottom of retracted photos.
+      // Carrie's retracted_full.jpg and retracted_labeled.jpg both have
+      // "Name/Date: Pappas..." + "HPC:" text baked into the bottom-left ~60%
+      // of the image. Cover that strip with the app background so the text
+      // doesn't ride along into exports or consult presentations. The right
+      // ~40% (ruler with cm/inches) is deliberately preserved for DSD
+      // calibration. Safe for other photos because the masked rectangle sits
+      // over the chin/background area, not the teeth.
+      if (/retracted/i.test(photoUrl || '')) {
+        const maskH = transform.imgH * 0.078;
+        const maskW = transform.imgW * 0.6;
+        ctx.fillStyle = C.bg;
+        ctx.fillRect(transform.offsetX, transform.offsetY + transform.imgH - maskH, maskW, maskH);
+      }
     }
 
-    // Ghost guide: show where next click should land, based on typical smile photo framing
-    // Approximate positions — left commissure ~25% from left, midline ~50%, right ~75%
-    // at ~60% down from top (typical photo framing of a retracted smile)
+    // Ghost guide: show where next click should land, based on typical smile photo framing.
+    // Target is the INCISAL EDGES of the upper arch — same line the smile curve interpolates
+    // through. For a standard retracted smile photo, canine tips sit ~38%/62% horizontally
+    // and the incisal plane sits ~55% down (just above the lower lip). Matches the AI
+    // auto-place landmarks (canine incisal edges, not commissures).
     if (!smileCurve && step === 2 && transform) {
       const imgW = transform.imgW;
       const imgH = transform.imgH;
       const imgOx = transform.offsetX;
       const imgOy = transform.offsetY;
-      const ghostY = imgOy + imgH * 0.58;
+      const ghostY = imgOy + imgH * 0.55;
       const ghosts = [
-        { x: imgOx + imgW * 0.32, label: 'Pt R', caption: 'Patient right corner of lips' },
-        { x: imgOx + imgW * 0.50, label: 'M', caption: 'Between front teeth' },
-        { x: imgOx + imgW * 0.68, label: 'Pt L', caption: 'Patient left corner of lips' },
+        { x: imgOx + imgW * 0.38, label: 'Pt R', caption: '#6 tip' },
+        { x: imgOx + imgW * 0.50, label: 'M',    caption: '#8 / #9 midline' },
+        { x: imgOx + imgW * 0.62, label: 'Pt L', caption: '#11 tip' },
       ];
       const nextIdx = placementBuffer.length;  // which ghost is "active"
 
@@ -483,7 +574,7 @@ export default function SmileCreator({ navigate, activePatient }) {
           // Shadow behind text for readability
           ctx.shadowColor = 'rgba(0,0,0,0.7)';
           ctx.shadowBlur = 8;
-          ctx.fillText(`Tap here: ${g.caption}`, g.x, ghostY + 40);
+          ctx.fillText(g.caption, g.x, ghostY + 30);
         }
         ctx.restore();
       });
@@ -521,20 +612,23 @@ export default function SmileCreator({ navigate, activePatient }) {
         ctx.fill();
         ctx.restore();
       };
-      // Midline (vertical line through full image height)
+      // DSD-standard reference-line color coding:
+      //   midline = pink (facial midline)
+      //   eyes    = blue (interpupillary)
+      //   lip line = amber/orange (maxillary lip line)
+      // Matches Digital Smile Design / Smilefy conventions — dentists learn
+      // these colors in DSD training and read the overlay faster.
       if (refLines.midline.enabled) {
         const mx = refLines.midline.x ?? photoDim.w / 2;
-        drawRefLine('#f59e0b', mx, 0, mx, photoDim.h, 'Midline');
+        drawRefLine('#ec4899', mx, 0, mx, photoDim.h, 'Midline');
       }
-      // Interpupillary (horizontal)
       if (refLines.interpupillary.enabled) {
         const ly = refLines.interpupillary.y ?? photoDim.h * 0.35;
-        drawRefLine('#0abab5', 0, ly, photoDim.w, ly, 'Eyes');
+        drawRefLine('#3b82f6', 0, ly, photoDim.w, ly, 'Eyes');
       }
-      // Lip line (horizontal)
       if (refLines.lipLine.enabled) {
         const ly = refLines.lipLine.y ?? photoDim.h * 0.55;
-        drawRefLine('#ec4899', 0, ly, photoDim.w, ly, 'Lip line');
+        drawRefLine('#f59e0b', 0, ly, photoDim.w, ly, 'Lip line');
       }
     }
 
@@ -621,30 +715,74 @@ export default function SmileCreator({ navigate, activePatient }) {
         const isSelected = selectedTooth === tooth.num;
         const shadeColor = SHADE_HEX[shade] || "#f5ead0";
 
+        // Smooth DSD-style silhouette: midpoint-anchored quadratic beziers
+        // through the anatomical vertex set (see traceSmoothOutline).
         ctx.beginPath();
-        outline.forEach((pt, i) => {
-          const x = pt[0] * cW;
-          const y = pt[1] * cH;
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        });
-        ctx.closePath();
+        traceSmoothOutline(ctx, outline, cW, cH);
 
-        // Fill with shade color (semi-opaque for overlay effect)
-        ctx.fillStyle = shadeColor + "e6";  // ~90% alpha
+        // Multiply-blend the veneer shade onto the underlying photograph so
+        // the proposed restoration shows the patient's tooth structure
+        // bleeding through (exactly how DSD / Smilefy mockups read as
+        // natural vs. stuck-on). Reduced overall opacity + gradient gives
+        // the cervical-to-incisal translucency real enamel has.
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-over';
+        const bodyGrad = ctx.createLinearGradient(0, -cH / 2, 0, cH / 2);
+        bodyGrad.addColorStop(0,    shadeColor + 'd8');  // cervical:  85%
+        bodyGrad.addColorStop(0.5,  shadeColor + 'b8');  // body:      72%
+        bodyGrad.addColorStop(0.85, shadeColor + '80');  // pre-edge:  50%
+        bodyGrad.addColorStop(1,    shadeColor + '30');  // incisal:   19% (very translucent)
+        ctx.fillStyle = bodyGrad;
         ctx.fill();
+        ctx.restore();
 
-        // Stroke
-        ctx.strokeStyle = isSelected ? C.teal : "rgba(255,255,255,0.4)";
-        ctx.lineWidth = isSelected ? 2.5 : 1;
-        ctx.stroke();
+        // Labial specular highlight — a soft curved band that matches enamel
+        // wet-shine. Offset slightly mesial to avoid looking dead-center
+        // artificial.
+        ctx.save();
+        ctx.beginPath();
+        traceSmoothOutline(ctx, outline, cW, cH);
+        ctx.clip();
+        const hi = ctx.createRadialGradient(-cW * 0.05, -cH * 0.18, 0, -cW * 0.05, -cH * 0.18, Math.min(cW, cH) * 0.6);
+        hi.addColorStop(0,    'rgba(255,255,255,0.20)');
+        hi.addColorStop(0.4,  'rgba(255,255,255,0.08)');
+        hi.addColorStop(1,    'rgba(255,255,255,0)');
+        ctx.fillStyle = hi;
+        ctx.fillRect(-cW, -cH, cW * 2, cH * 2);
+        ctx.restore();
 
-        // Tooth number label
-        ctx.fillStyle = isSelected ? C.teal : "rgba(0,0,0,0.55)";
-        ctx.font = `bold ${Math.max(10, cH * 0.15)}px ` + C.font;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(`${tooth.num}`, 0, 0);
+        // Outline — invisible at rest (the silhouette reads from the
+        // shade/highlight alone, just like real teeth); teal on selection.
+        if (isSelected) {
+          ctx.beginPath();
+          traceSmoothOutline(ctx, outline, cW, cH);
+          ctx.strokeStyle = C.teal;
+          ctx.lineWidth   = 2;
+          ctx.stroke();
+        } else {
+          // ultra-quiet hair-line for silhouette grounding on the photo
+          ctx.beginPath();
+          traceSmoothOutline(ctx, outline, cW, cH);
+          ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+          ctx.lineWidth   = 0.5;
+          ctx.stroke();
+        }
+
+        // Tooth number — de-emphasized by default so the teeth don't read as
+        // numbered tiles. Only visible on hover/selection, or very faintly.
+        if (isSelected) {
+          ctx.fillStyle = C.teal;
+          ctx.font = `600 ${Math.max(11, cH * 0.14)}px ${C.font}`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(`${tooth.num}`, 0, 0);
+        } else {
+          ctx.fillStyle = 'rgba(40,30,20,0.28)';
+          ctx.font = `500 ${Math.max(9, cH * 0.11)}px ${C.font}`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(`${tooth.num}`, 0, 0);
+        }
 
         // Selection handles (drawn in tooth local coord frame — already rotated)
         if (isSelected) {
@@ -706,18 +844,31 @@ export default function SmileCreator({ navigate, activePatient }) {
 
   // ── Mouse/touch handlers ──────────────────────────────────────
   const getCanvasPoint = (e) => {
-    const rect = canvasRef.current.getBoundingClientRect();
-    const cx = (e.clientX ?? e.touches?.[0]?.clientX) - rect.left;
-    const cy = (e.clientY ?? e.touches?.[0]?.clientY) - rect.top;
-    return { x: cx, y: cy };
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.clientX ?? e.touches?.[0]?.clientX ?? e.changedTouches?.[0]?.clientX;
+    const clientY = e.clientY ?? e.touches?.[0]?.clientY ?? e.changedTouches?.[0]?.clientY;
+    // Normalize into the canvasDim coordinate system used by the drawing code.
+    // If the canvas's actual rendered size drifted from canvasDim (sub-pixel
+    // rounding, flex layout settling, CSS zoom), this scale keeps click
+    // coordinates and drawn coordinates in the same frame so dots land exactly
+    // where the user tapped.
+    const sx = rect.width  > 0 ? canvasDim.w / rect.width  : 1;
+    const sy = rect.height > 0 ? canvasDim.h / rect.height : 1;
+    return {
+      x: (clientX - rect.left) * sx,
+      y: (clientY - rect.top)  * sy,
+    };
   };
 
   const hitTestCurvePoints = (cx, cy) => {
     if (!smileCurve) return -1;
     const points = [smileCurve.p0, smileCurve.p1, smileCurve.p2];
+    // Generous 20px hit radius — matches the visual dot (r=10) plus slop so
+    // the user doesn't have to pixel-hunt to start dragging a control point.
     for (let i = 0; i < 3; i++) {
       const cpos = imageToCanvas(points[i].x, points[i].y);
-      if (Math.hypot(cpos.x - cx, cpos.y - cy) < 14) return i;
+      if (Math.hypot(cpos.x - cx, cpos.y - cy) < 20) return i;
     }
     return -1;
   };
@@ -1139,18 +1290,31 @@ export default function SmileCreator({ navigate, activePatient }) {
         let outline = resolveOutline(library, tooth.num, tooth.type);
         if (tooth.num >= 9) outline = outline.map(([x, y]) => [-x, y]);
         const shadeColor = SHADE_HEX[shade] || "#f5ead0";
+        // Same DSD-style rendering as the live canvas for consistency.
         ctx.beginPath();
-        outline.forEach((pt, i) => {
-          const x = pt[0] * cW;
-          const y = pt[1] * cH;
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        });
-        ctx.closePath();
-        ctx.fillStyle = shadeColor + 'e6';
+        traceSmoothOutline(ctx, outline, cW, cH);
+        const bodyGrad = ctx.createLinearGradient(0, -cH / 2, 0, cH / 2);
+        bodyGrad.addColorStop(0,    shadeColor + 'd8');
+        bodyGrad.addColorStop(0.5,  shadeColor + 'b8');
+        bodyGrad.addColorStop(0.85, shadeColor + '80');
+        bodyGrad.addColorStop(1,    shadeColor + '30');
+        ctx.fillStyle = bodyGrad;
         ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-        ctx.lineWidth = 1;
+        ctx.save();
+        ctx.beginPath();
+        traceSmoothOutline(ctx, outline, cW, cH);
+        ctx.clip();
+        const hi = ctx.createRadialGradient(-cW * 0.05, -cH * 0.18, 0, -cW * 0.05, -cH * 0.18, Math.min(cW, cH) * 0.6);
+        hi.addColorStop(0,    'rgba(255,255,255,0.20)');
+        hi.addColorStop(0.4,  'rgba(255,255,255,0.08)');
+        hi.addColorStop(1,    'rgba(255,255,255,0)');
+        ctx.fillStyle = hi;
+        ctx.fillRect(-cW, -cH, cW * 2, cH * 2);
+        ctx.restore();
+        ctx.beginPath();
+        traceSmoothOutline(ctx, outline, cW, cH);
+        ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+        ctx.lineWidth = 0.5;
         ctx.stroke();
         ctx.restore();
       });
@@ -1409,7 +1573,7 @@ export default function SmileCreator({ navigate, activePatient }) {
   if (!activePatient) {
     return (
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: C.bg, color: C.muted, flexDirection: "column", gap: 14, fontFamily: C.sans }}>
-        <div style={{ fontSize: 64 }}>😊</div>
+        <div style={{ width:72, height:72, borderRadius:"50%", background:`${C.teal}15`, border:`1.5px solid ${C.teal}40`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:32, color:C.teal, fontFamily:C.font, fontWeight:300 }}>○</div>
         <div style={{ fontSize: 20, color: C.ink, fontWeight: 700 }}>Select a patient to start Smile Creator</div>
         <div style={{ fontSize: 14 }}>Choose a patient on the Dashboard, then return here to design their new smile.</div>
       </div>
@@ -1422,7 +1586,7 @@ export default function SmileCreator({ navigate, activePatient }) {
       <div style={{ padding: "18px 28px", borderBottom: `1px solid ${C.border}`, background: C.surface, flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
           <div>
-            <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.02em", color: C.ink }}>
+            <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-.02em", color: C.ink }}>
               Smile Creator
             </div>
             <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>
@@ -1430,25 +1594,26 @@ export default function SmileCreator({ navigate, activePatient }) {
             </div>
           </div>
 
-          {/* Step indicator */}
-          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontFamily: C.sans }}>
+          {/* Step indicator — enlarged for prominence, Apple-style two-step flow
+               (step 1 Photo is always set by default, so display as 2 active steps) */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, fontFamily: C.sans }}>
             {[
-              { n: 1, label: "Photo" },
-              { n: 2, label: "Smile Curve" },
-              { n: 3, label: "Design" },
+              { n: 2, label: "Place smile curve" },
+              { n: 3, label: "Refine design" },
             ].map((s, i) => (
-              <div key={s.n} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div key={s.n} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{
-                  width: 22, height: 22, borderRadius: 11,
+                  width: 28, height: 28, borderRadius: 14,
                   background: step >= s.n ? C.teal : "transparent",
                   border: `1.5px solid ${step >= s.n ? C.teal : C.border}`,
                   color: step >= s.n ? "#fff" : C.muted,
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  fontWeight: 700, fontSize: 11,
+                  fontWeight: 600, fontSize: 13,
                   fontFamily: C.sans,
-                }}>{step > s.n ? "✓" : s.n}</div>
-                <span style={{ color: step === s.n ? C.ink : (step > s.n ? C.teal : C.muted), fontWeight: step === s.n ? 600 : 500 }}>{s.label}</span>
-                {i < 2 && <span style={{ color: C.border, margin: "0 4px", fontSize: 10 }}>›</span>}
+                  transition: "all .18s",
+                }}>{step > s.n ? "✓" : (i + 1)}</div>
+                <span style={{ color: step === s.n ? C.ink : (step > s.n ? C.teal : C.muted), fontWeight: step === s.n ? 600 : 500, letterSpacing:.1 }}>{s.label}</span>
+                {i < 1 && <span style={{ color: C.border, margin: "0 6px", fontSize: 12 }}>›</span>}
               </div>
             ))}
           </div>
@@ -1729,14 +1894,20 @@ export default function SmileCreator({ navigate, activePatient }) {
                   textAlign: "center",
                   fontFamily: C.sans,
                 }}>
-                  📷 Upload retracted smile photo
-                  <input type="file" accept="image/*" style={{ display: "none" }}
-                    onChange={(e) => {
+                  Upload retracted smile photo
+                  <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/tiff,.jpg,.jpeg,.png,.webp,.heic,.heif,.tif,.tiff" style={{ display: "none" }}
+                    onChange={async (e) => {
                       const f = e.target.files?.[0];
                       if (!f) return;
-                      const reader = new FileReader();
-                      reader.onload = () => setPhotoUrl(reader.result);
-                      reader.readAsDataURL(f);
+                      try {
+                        // Handles HEIC (iPhone clinic photos) transparently —
+                        // transcodes to JPEG so Chrome / Firefox can render.
+                        const loaded = await loadImageFromFile(f);
+                        setPhotoUrl(loaded.dataURL);
+                      } catch (err) {
+                        console.error('Photo upload failed', err);
+                        alert(`Could not load ${f.name}: ${err.message}`);
+                      }
                     }}/>
                 </label>
               </div>
@@ -1774,7 +1945,7 @@ export default function SmileCreator({ navigate, activePatient }) {
                     />
                   </div>
                   <div style={{ padding: "11px 13px", background: C.tealDim, border: `1px solid ${C.tealBorder}`, borderRadius: 8, fontSize: 12, color: C.ink, lineHeight: 1.6 }}>
-                    Or follow the pulsing dots on the photo. Click each in turn: left lip corner, midline, right lip corner.
+                    Or follow the pulsing dots on the photo. Click each in turn: patient-right canine tip (#6), midline between #8 and #9, patient-left canine tip (#11).
                   </div>
                 </>
               ) : (
@@ -1894,7 +2065,7 @@ export default function SmileCreator({ navigate, activePatient }) {
               <div style={{ marginBottom: 22 }}>
                 <div style={{ fontSize: 11, color: C.muted, letterSpacing: 1, fontWeight: 600, marginBottom: 10, textTransform: "uppercase" }}>Shade</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
-                  {["BL1","BL2","BL3","BL4","A1","A2","A3","A3.5"].map(s => {
+                  {(showAllShades ? Object.keys(SHADE_HEX) : ["BL1","BL2","BL3","BL4","A1","A2","A3","A3.5"]).map(s => {
                     const isActive = shade === s;
                     return (
                       <button key={s}
@@ -1918,9 +2089,9 @@ export default function SmileCreator({ navigate, activePatient }) {
                     );
                   })}
                 </div>
-                <button onClick={() => { /* expand to show more shades */ }}
+                <button onClick={() => setShowAllShades(v => !v)}
                   style={{ marginTop: 6, width: "100%", padding: "6px", borderRadius: 6, background: "transparent", border: "none", color: C.muted, fontSize: 11, cursor: "pointer", fontFamily: C.sans }}>
-                  All shades ▾
+                  {showAllShades ? "Fewer shades ▴" : "All shades ▾"}
                 </button>
               </div>
 

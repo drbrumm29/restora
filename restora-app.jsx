@@ -999,11 +999,19 @@ function Dashboard({ navigate, setActivePatient, customPatients=[] }) {
     setActivePatient(p);
     navigate(target);
   }
+  // Clinical stats derived from patient case data — replaces opaque
+  // "Active / Ready / In-progress / Needed" labels with information a
+  // clinician actually wants at-a-glance: photos uploaded, scans loaded,
+  // cases with lab, and files still needed.
+  const photosCount = cases.reduce((n,c) => n + (c.photos?.length || 0), 0);
+  const scansCount  = cases.reduce((n,c) => n + (c.files?.filter(f => /\.stl$/i.test(f.name)).length || 0), 0);
+  const withLabCount = cases.filter(c => c.status === "In progress").length;
+  const filesNeededCount = cases.filter(c => c.status === "Files needed").length;
   const stats=[
     {label:"Active cases", value:String(cases.length), sub:"April 2026", color:C.teal},
-    {label:"Designs ready", value:String(cases.filter(c=>c.status==="Design ready").length), sub:"Awaiting export", color:C.green},
-    {label:"In progress", value:String(cases.filter(c=>c.status==="In progress").length), sub:"With lab", color:C.blue},
-    {label:"Files needed", value:String(cases.filter(c=>c.status==="Files needed").length), sub:"Action required", color:C.warn},
+    {label:"Photos on file", value:String(photosCount), sub:`across ${cases.length} patient${cases.length===1?'':'s'}`, color:C.green},
+    {label:"STL scans loaded", value:String(scansCount), sub:"ready to design", color:C.blue},
+    {label:"With lab", value:String(withLabCount), sub:filesNeededCount > 0 ? `${filesNeededCount} need files` : "on track", color:filesNeededCount > 0 ? C.warn : C.muted},
   ];
 
   // Pick a "current patient" for the hero CTA — the first active case if any
@@ -1013,7 +1021,7 @@ function Dashboard({ navigate, setActivePatient, customPatients=[] }) {
     <div style={{ flex:1,overflow:"auto",padding:isNarrow?"24px 18px 100px":"40px 48px",background:C.bg,color:C.ink,fontFamily:C.sans }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:14, marginBottom:10 }}>
         <div>
-          <div style={{ fontSize:isNarrow?28:40,fontWeight:800,letterSpacing:"-.03em",marginBottom:10 }}>Dashboard</div>
+          <div style={{ fontSize:isNarrow?28:36,fontWeight:700,letterSpacing:"-.02em",marginBottom:10 }}>Dashboard</div>
           <div style={{ fontSize:isNarrow?15:18,color:C.muted,marginBottom:0 }}>Active cases · April 2026</div>
         </div>
         <button onClick={()=>window.dispatchEvent(new CustomEvent('restora:open-new-patient'))}
@@ -1034,8 +1042,8 @@ function Dashboard({ navigate, setActivePatient, customPatients=[] }) {
             width:"100%", marginBottom:isNarrow?20:28,
             padding:isNarrow?"20px 22px":"26px 30px",
             borderRadius:16,
-            background:`linear-gradient(135deg, ${C.teal}22 0%, ${C.purple}22 100%)`,
-            border:`1.5px solid ${C.teal}60`,
+            background:`linear-gradient(135deg, ${C.teal}1f 0%, ${C.teal}0a 100%)`,
+            border:`1px solid ${C.teal}55`,
             cursor:"pointer", fontFamily:C.sans, textAlign:"left",
             display:"flex", alignItems:"center", justifyContent:"space-between", gap:20,
             transition:"all .18s",
@@ -1043,7 +1051,7 @@ function Dashboard({ navigate, setActivePatient, customPatients=[] }) {
           onMouseEnter={e=>{ e.currentTarget.style.borderColor = C.teal; e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = `0 12px 40px ${C.teal}30`; }}
           onMouseLeave={e=>{ e.currentTarget.style.borderColor = C.teal+"60"; e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "none"; }}>
           <div style={{ display:"flex", alignItems:"center", gap:isNarrow?14:22, minWidth:0, flex:1 }}>
-            <div style={{ width:isNarrow?56:72, height:isNarrow?56:72, borderRadius:16, background:C.teal+"33", color:C.teal, display:"flex", alignItems:"center", justifyContent:"center", fontSize:isNarrow?32:42, flexShrink:0 }}>😊</div>
+            <div style={{ width:isNarrow?56:72, height:isNarrow?56:72, borderRadius:16, background:C.teal+"22", color:C.teal, display:"flex", alignItems:"center", justifyContent:"center", fontSize:isNarrow?28:36, flexShrink:0, fontFamily:C.font, fontWeight:300 }}>○</div>
             <div style={{ minWidth:0 }}>
               <div style={{ fontSize:isNarrow?11:13, fontFamily:C.font, letterSpacing:2, color:C.teal, fontWeight:700, marginBottom:4 }}>START NEW SMILE DESIGN</div>
               <div style={{ fontSize:isNarrow?20:26, fontWeight:800, color:C.ink, marginBottom:4, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{heroPatient.name}</div>
@@ -1060,10 +1068,10 @@ function Dashboard({ navigate, setActivePatient, customPatients=[] }) {
       {/* Stats row */}
       <div style={{ display:"grid",gridTemplateColumns:isNarrow?"repeat(2, 1fr)":"repeat(4, 1fr)",gap:isNarrow?12:18,marginBottom:isNarrow?20:28 }}>
         {stats.map(s => (
-          <div key={s.label} style={{ padding:isNarrow?18:26, borderRadius:12, border:`1px solid ${s.color}35`, background:s.color+"0e" }}>
-            <div style={{ fontSize:isNarrow?11:13, fontFamily:C.font, letterSpacing:2, color:s.color, marginBottom:isNarrow?10:14, textTransform:"uppercase", fontWeight:700 }}>{s.label}</div>
-            <div style={{ fontSize:isNarrow?32:44, fontWeight:800, color:C.ink, lineHeight:1, marginBottom:8, fontFamily:C.font }}>{s.value}</div>
-            <div style={{ fontSize:isNarrow?12:15, color:C.muted }}>{s.sub}</div>
+          <div key={s.label} style={{ padding:isNarrow?18:26, borderRadius:12, border:`1px solid ${C.border}`, background:C.surface }}>
+            <div style={{ fontSize:isNarrow?11:12, fontFamily:C.font, letterSpacing:2, color:C.muted, marginBottom:isNarrow?10:14, textTransform:"uppercase", fontWeight:700 }}>{s.label}</div>
+            <div style={{ fontSize:isNarrow?32:40, fontWeight:700, color:C.ink, lineHeight:1, marginBottom:8, fontFamily:C.font, letterSpacing:"-.02em" }}>{s.value}</div>
+            <div style={{ fontSize:isNarrow?12:14, color:s.color, fontWeight:500 }}>{s.sub}</div>
           </div>
         ))}
       </div>
@@ -1071,14 +1079,14 @@ function Dashboard({ navigate, setActivePatient, customPatients=[] }) {
       {/* Quick actions — now focused on primary clinical tools */}
       <div style={{ display:"grid",gridTemplateColumns:isNarrow?"1fr":"1fr 1fr 1fr",gap:isNarrow?12:18,marginBottom:isNarrow?24:32 }}>
         {[
-          {label:"Smile Creator",   desc:"2D smile design on patient photo",   icon:"😊", action:"smile-creator", color:C.teal},
+          {label:"Smile Creator",   desc:"2D smile design on patient photo",   icon:"○", action:"smile-creator", color:C.teal},
           {label:"Scan Viewer",     desc:"3D scan review + lab export",         icon:"◉",  action:"restoration-cad", color:C.purple},
           {label:"X-ray Analysis",  desc:"AI-assisted radiograph review",       icon:"△",  action:"xray-analysis", color:C.amber},
         ].map(a=>(
-          <button key={a.label} onClick={()=>navigate(a.action)} style={{ padding:isNarrow?22:30,borderRadius:12,border:`1.5px solid ${a.color+"55"}`,background:a.color+"10",cursor:"pointer",fontFamily:C.sans,textAlign:"left",transition:"all .15s" }}
-            onMouseEnter={e=>{e.currentTarget.style.background=a.color+"22"; e.currentTarget.style.borderColor=a.color+"80";}}
-            onMouseLeave={e=>{e.currentTarget.style.background=a.color+"10"; e.currentTarget.style.borderColor=a.color+"55";}}>
-            <span style={{ fontSize:isNarrow?28:34,color:a.color,display:"block",marginBottom:12 }}>{a.icon}</span>
+          <button key={a.label} onClick={()=>navigate(a.action)} style={{ padding:isNarrow?22:30,borderRadius:12,border:`1px solid ${C.border}`,background:C.surface,cursor:"pointer",fontFamily:C.sans,textAlign:"left",transition:"all .18s" }}
+            onMouseEnter={e=>{e.currentTarget.style.borderColor=a.color+"80"; e.currentTarget.style.background=C.surface2;}}
+            onMouseLeave={e=>{e.currentTarget.style.borderColor=C.border; e.currentTarget.style.background=C.surface;}}>
+            <span style={{ fontSize:isNarrow?26:30,color:a.color,display:"block",marginBottom:14, fontFamily:C.font, fontWeight:300 }}>{a.icon}</span>
             <div style={{ fontSize:isNarrow?17:19,fontWeight:700,color:C.ink,marginBottom:6 }}>{a.label}</div>
             <div style={{ fontSize:isNarrow?13:15,color:C.muted,lineHeight:1.5 }}>{a.desc}</div>
           </button>
@@ -1447,28 +1455,33 @@ function TitleBar({ screen, navigate, onMenuClick, isMobile }) {
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
         </button>
       ) : (
+        // Quiet macOS-style traffic-light dots: all grey until hovered.
         <div style={{ display:"flex",gap:6 }}>
-          {["#ef4444","#f59e0b","#22c55e"].map((c,i)=><div key={i} style={{ width:12,height:12,borderRadius:"50%",background:c }} />)}
+          {[0,1,2].map(i => <div key={i} style={{ width:12,height:12,borderRadius:"50%",background:C.borderSoft }} />)}
         </div>
       )}
       <div style={{ display:"flex",alignItems:"center",gap:8,marginLeft:isMobile?0:8 }}>
-        <div style={{ width:28,height:28,borderRadius:8,background:`linear-gradient(135deg,${C.teal},#0080cc)`,display:"flex",alignItems:"center",justifyContent:"center" }}>
+        <div style={{ width:26,height:26,borderRadius:7,background:C.teal,display:"flex",alignItems:"center",justifyContent:"center" }}>
           <svg width="13" height="13" viewBox="0 0 12 12" fill="none"><path d="M1.5 10.5C1.5 7 4 2 6 2C8 2 10.5 7 10.5 10.5" stroke="white" strokeWidth="1.8" strokeLinecap="round"/><circle cx="6" cy="10.5" r="1.2" fill="white"/></svg>
         </div>
-        <span style={{ fontSize:16,color:C.ink,fontWeight:700 }}>Re<span style={{ color:C.teal }}>stora</span></span>
+        <span style={{ fontSize:15,color:C.ink,fontWeight:600,letterSpacing:"-.01em" }}>Re<span style={{ color:C.teal }}>stora</span></span>
       </div>
       {!isMobile && (
         <>
           <span style={{ fontSize:13,color:C.light }}>›</span>
-          <span style={{ fontSize:14,fontWeight:600,color:C.ink }}>{def.label||screen}</span>
+          <span style={{ fontSize:13,fontWeight:500,color:C.muted }}>{def.label||screen}</span>
         </>
       )}
       <div style={{ flex:1 }} />
       {!isMobile && (
-        <button onClick={()=>navigate("ai-design-guide")} style={{ display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:20,background:C.surface2,border:`1px solid ${C.border}`,fontSize:12,fontFamily:C.font,color:C.teal,cursor:"pointer",letterSpacing:.5 }}>⌘K AI</button>
-      )}
-      {!isMobile && (
-        <button style={{ padding:"6px 14px",borderRadius:20,border:`1px solid ${C.border}`,background:"transparent",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:C.sans }}>Share ↗</button>
+        // Single quiet action: ⌘K AI. "Share" moved out of top bar; export
+        // actions live on the Export screen, not in the global header.
+        <button onClick={()=>navigate("ai-design-guide")}
+          style={{ display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,background:"transparent",border:`1px solid ${C.border}`,fontSize:12,fontFamily:C.font,color:C.muted,cursor:"pointer",letterSpacing:.5 }}
+          onMouseEnter={e=>{ e.currentTarget.style.color=C.teal; e.currentTarget.style.borderColor=C.teal+"60"; }}
+          onMouseLeave={e=>{ e.currentTarget.style.color=C.muted; e.currentTarget.style.borderColor=C.border; }}>
+          ⌘K AI
+        </button>
       )}
     </div>
   );

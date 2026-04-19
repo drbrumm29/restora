@@ -414,21 +414,33 @@ function LargePreview({ libId, fileName, color, onAdd }) {
 // ── Main component ─────────────────────────────────────────────────
 export default function ToothLibraryBrowser({ navigate, activePatient }) {
   const [favorites, setFavorites] = useState([]);
+  const [recent, setRecent]       = useState([]);  // pack ids, most-recent first, max 3
   const [activePack, setActivePack] = useState(LIBRARY_PACKS[0].id);
   const [selected, setSelected] = useState(null);  // { libId, fileName }
   const [filter, setFilter] = useState("all");
   const [shadeColor, setShadeColor] = useState(0xf0e4d0);
 
-  // Load favorites
+  // Load favorites + recent
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('restora-lib-favorites');
-      setFavorites(saved ? JSON.parse(saved) : []);
-    } catch { setFavorites([]); }
+      const favs = localStorage.getItem('restora-lib-favorites');
+      setFavorites(favs ? JSON.parse(favs) : []);
+      const recentRaw = localStorage.getItem('restora-lib-recent');
+      setRecent(recentRaw ? JSON.parse(recentRaw) : []);
+    } catch { setFavorites([]); setRecent([]); }
   }, []);
   useEffect(() => {
     try { localStorage.setItem('restora-lib-favorites', JSON.stringify(favorites)); } catch {}
   }, [favorites]);
+  useEffect(() => {
+    try { localStorage.setItem('restora-lib-recent', JSON.stringify(recent)); } catch {}
+  }, [recent]);
+
+  // Track recent — bump activePack to the front when it changes
+  useEffect(() => {
+    if (!activePack) return;
+    setRecent(r => [activePack, ...r.filter(x => x !== activePack)].slice(0, 3));
+  }, [activePack]);
 
   function toggleFavorite(libId) {
     setFavorites(f => f.includes(libId) ? f.filter(x => x !== libId) : [...f, libId]);
@@ -463,7 +475,7 @@ export default function ToothLibraryBrowser({ navigate, activePatient }) {
       <div style={{ padding: "20px 28px", borderBottom: `1px solid ${C.border}`, background: C.surface, flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
           <div>
-            <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-.02em", color: C.ink }}>Tooth Library</div>
+            <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-.02em", color: C.ink }}>Tooth Library</div>
             <div style={{ fontSize: 14, color: C.muted, marginTop: 3 }}>
               Browse, preview, and choose tooth shapes for restoration cases
               {activePatient && <span style={{ color: C.teal }}> · Active: {activePatient.name}</span>}
@@ -497,9 +509,25 @@ export default function ToothLibraryBrowser({ navigate, activePatient }) {
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
         {/* LEFT: pack list */}
         <div style={{ width: 260, borderRight: `1px solid ${C.border}`, overflow: "auto", background: C.surface, padding: "14px 0" }}>
+          {recent.filter(id => !favorites.includes(id)).length > 0 && (
+            <div style={{ padding: "6px 18px 4px", fontSize: 10, fontFamily: C.font, color: C.muted, letterSpacing: 2, fontWeight: 700 }}>
+              RECENT
+            </div>
+          )}
+          {recent.filter(id => !favorites.includes(id)).slice(0, 3).map(id => {
+            const p = LIBRARY_PACKS.find(x => x.id === id);
+            if (!p) return null;
+            const isActive = p.id === activePack;
+            return (
+              <button key={`recent-${p.id}`} onClick={() => setActivePack(p.id)}
+                style={{ width: "100%", textAlign: "left", padding: "10px 18px", background: isActive ? C.tealDim : "transparent", border: "none", borderLeft: `3px solid ${isActive ? C.teal : "transparent"}`, cursor: "pointer", fontFamily: C.sans, color: C.ink, display:"flex", alignItems:"center", gap:10 }}>
+                <span style={{ fontSize: 13, color: isActive ? C.teal : C.muted, fontWeight: isActive ? 600 : 500 }}>{p.name}</span>
+              </button>
+            );
+          })}
           {favorites.length > 0 && (
-            <div style={{ padding: "6px 18px 4px", fontSize: 12, fontFamily: C.font, color: C.amber, letterSpacing: 2, fontWeight: 700 }}>
-              ⭐ FAVORITES
+            <div style={{ padding: `${recent.length > 0 ? '12px' : '6px'} 18px 4px`, fontSize: 10, fontFamily: C.font, color: C.muted, letterSpacing: 2, fontWeight: 700 }}>
+              FAVORITES
             </div>
           )}
           {sortedPacks.map(p => {
@@ -509,7 +537,7 @@ export default function ToothLibraryBrowser({ navigate, activePatient }) {
               <div key={p.id}>
                 {/* Show a SECTION divider between favorites and rest */}
                 {favorites.length > 0 && !isFav && sortedPacks.findIndex(x => !favorites.includes(x.id)) === sortedPacks.indexOf(p) && (
-                  <div style={{ padding: "12px 18px 4px", fontSize: 12, fontFamily: C.font, color: C.muted, letterSpacing: 2, fontWeight: 700 }}>
+                  <div style={{ padding: "12px 18px 4px", fontSize: 10, fontFamily: C.font, color: C.muted, letterSpacing: 2, fontWeight: 700 }}>
                     ALL LIBRARIES
                   </div>
                 )}
@@ -551,11 +579,11 @@ export default function ToothLibraryBrowser({ navigate, activePatient }) {
         <div style={{ flex: 1, overflow: "auto", padding: 20, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 18 }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 20, fontWeight: 700, color: pack.color, marginBottom: 4 }}>{pack.name}</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: C.ink, marginBottom: 4, letterSpacing:"-.01em" }}>{pack.name}</div>
               <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5, marginBottom: 10 }}>{pack.description}</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {pack.recommendedFor.map(r => (
-                  <span key={r} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 4, background: pack.color + "20", color: pack.color, fontFamily: C.font, fontWeight: 600 }}>{r}</span>
+                  <span key={r} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 999, background: C.surface2, color: C.muted, fontFamily: C.sans, fontWeight: 500, letterSpacing: .1, border: `1px solid ${C.border}` }}>{r}</span>
                 ))}
               </div>
             </div>
@@ -577,13 +605,13 @@ export default function ToothLibraryBrowser({ navigate, activePatient }) {
                 }}
                 title={`Apply ${pack.name} to all target teeth in ${activePatient.name}'s case`}
               >
-                ✨ Apply Whole Library →
+                Apply Whole Library →
               </button>
             )}
           </div>
           {activePatient && pack.files.length >= 5 && (
-            <div style={{ padding: "10px 14px", marginBottom: 18, borderRadius: 7, background: C.tealDim, border: `1px solid ${C.tealBorder}`, fontSize: 13, color: C.ink, lineHeight: 1.5 }}>
-              ℹ️ <strong>Apply Whole Library</strong> places matched teeth at ALL your labeled target positions in one click. Label the target teeth in Restoration CAD first (#4-#13 for {activePatient.name}'s case), then return here and click Apply.
+            <div style={{ padding: "10px 14px", marginBottom: 18, borderRadius: 8, background: C.surface2, border: `1px solid ${C.border}`, fontSize: 12, color: C.muted, lineHeight: 1.55 }}>
+              <strong style={{ color: C.ink, fontWeight: 600 }}>Apply Whole Library</strong> places matched teeth at every labeled target in one click. Label the targets in Scan Viewer first (#4–#13 for {activePatient.name}), then return here.
             </div>
           )}
 

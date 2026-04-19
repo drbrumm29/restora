@@ -109,7 +109,7 @@ export default function FullArchScreen({ navigate, activePatient }) {
     <div style={{ flex:1, overflow:"auto", background:C.bg, color:C.ink, fontFamily:C.sans }}>
       {/* Header */}
       <div style={{ padding:"20px 24px", borderBottom:`1px solid ${C.border}` }}>
-        <div style={{ fontSize:22, fontWeight:800, letterSpacing:"-.02em" }}>Full Arch Design</div>
+        <div style={{ fontSize:28, fontWeight:700, letterSpacing:"-.02em" }}>Full Arch</div>
         <div style={{ fontSize:13, color:C.muted, marginTop:3 }}>
           {activePatient ? `${activePatient.name}` : "Prosthetic planning & material selection"}
         </div>
@@ -155,16 +155,22 @@ export default function FullArchScreen({ navigate, activePatient }) {
 
           {/* Prosthesis type selection */}
           <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:20 }}>
-            <div style={{ fontSize:11, fontFamily:C.font, color:C.teal, letterSpacing:2, fontWeight:700, marginBottom:14 }}>PROSTHESIS TYPE (Misch classification)</div>
+            <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", marginBottom:14 }}>
+              <div style={{ fontSize:11, fontFamily:C.font, color:C.muted, letterSpacing:2, fontWeight:700 }}>PROSTHESIS TYPE (Misch classification)</div>
+              <div style={{ fontSize:10, fontFamily:C.font, color:C.muted, letterSpacing:.5 }} title="Relative cost: $ = low · $$$$ = high">
+                $ &nbsp;low&nbsp;&nbsp;→&nbsp;&nbsp;$$$$&nbsp; high
+              </div>
+            </div>
             <div style={{ display:"grid", gap:10 }}>
               {TYPES.map(t => {
                 const active = t.id === type;
                 return (
                   <button key={t.id} onClick={()=>setType(t.id)}
-                    style={{ textAlign:"left", padding:"14px 16px", borderRadius:9, background:active?C.tealDim:C.surface2, border:`1.5px solid ${active?C.tealBorder:C.border}`, cursor:"pointer", fontFamily:C.sans, color:C.ink, transition:"all .15s" }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
-                      <div style={{ fontSize:14, fontWeight:700, color:active?C.teal:C.ink }}>{t.label}</div>
-                      <span style={{ fontSize:11, color:C.amber, fontFamily:C.font, fontWeight:700 }}>{t.cost}</span>
+                    style={{ textAlign:"left", padding:"14px 16px", borderRadius:10, background:active?C.tealDim:C.surface2, border:`1px solid ${active?C.teal:C.border}`, cursor:"pointer", fontFamily:C.sans, color:C.ink, transition:"all .15s", position:"relative" }}>
+                    {active && <div style={{ position:"absolute", top:12, right:14, width:8, height:8, borderRadius:"50%", background:C.teal }} />}
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4, paddingRight:active?16:0 }}>
+                      <div style={{ fontSize:14, fontWeight:600, color:active?C.teal:C.ink }}>{t.label}</div>
+                      <span style={{ fontSize:11, color:C.muted, fontFamily:C.font, fontWeight:600, letterSpacing:1 }}>{t.cost}</span>
                     </div>
                     <div style={{ fontSize:12, color:C.muted, lineHeight:1.5 }}>{t.when}</div>
                   </button>

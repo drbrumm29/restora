@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { PATIENTS } from "./patient-cases.js";
+import { loadImageFromFile } from "./image-loaders.js";
 
 const C = {
   bg:"#0d1b2e", surface:"#132338", surface2:"#1a2f48", surface3:"#213858",
@@ -148,17 +149,19 @@ export default function SmileSimulation({ navigate, activePatient }) {
 
   }, [loaded, shadeIdx, whiten, lengthAdj, opacity, region, imgDims]);
 
-  function handleFile(f) {
+  async function handleFile(f) {
     if (!f) return;
-    const reader = new FileReader();
-    reader.onload = e => {
-      setImage(e.target.result);
-      setImageName(f.name);
+    try {
+      const loaded = await loadImageFromFile(f);
+      setImage(loaded.dataURL);
+      setImageName(loaded.originalName);
       setLoaded(false);
       setRegion(null);
       setAiNotes(null);
-    };
-    reader.readAsDataURL(f);
+    } catch (err) {
+      console.error('Photo upload failed', err);
+      alert(`Could not load ${f.name}: ${err.message}`);
+    }
   }
 
   // Canvas mouse: click-drag to define tooth region
@@ -270,7 +273,7 @@ Return JSON only:
       {/* Header */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 22px", borderBottom:`1px solid ${C.border}`, gap:14, flexWrap:"wrap", flexShrink:0 }}>
         <div>
-          <div style={{ fontSize:22, fontWeight:800, letterSpacing:"-.02em" }}>Smile Simulation</div>
+          <div style={{ fontSize:28, fontWeight:700, letterSpacing:"-.02em" }}>Smile Simulation</div>
           <div style={{ fontSize:13, color:C.muted, marginTop:3 }}>
             {imageName ? `${imageName} · ${imgDims.w}×${imgDims.h}` : "Load a patient photo to begin"}
           </div>
@@ -278,7 +281,7 @@ Return JSON only:
         <div style={{ display:"flex", gap:10 }}>
           <label style={{ padding:"10px 16px", borderRadius:8, background:C.surface2, color:C.muted, border:`1px solid ${C.border}`, fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:C.sans }}>
             📸 Upload Photo
-            <input type="file" accept="image/*" style={{ display:"none" }} onChange={e=>handleFile(e.target.files?.[0])}/>
+            <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif" style={{ display:"none" }} onChange={e=>handleFile(e.target.files?.[0])}/>
           </label>
           {image && <button onClick={downloadResult} style={{ padding:"10px 16px", borderRadius:8, background:C.teal, color:"white", border:"none", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:C.sans }}>⬇ Save Preview</button>}
         </div>

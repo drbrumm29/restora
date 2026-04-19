@@ -6,7 +6,7 @@ const C = {
   border:"#2a4060", borderSoft:"#1f3352",
   ink:"#f4f7fb", muted:"#9db4cc", light:"#5a7a9b",
   teal:"#0abab5", tealDim:"rgba(10,186,181,.12)", tealBorder:"rgba(10,186,181,.35)",
-  amber:"#d97706", red:"#dc2626", green:"#059669", blue:"#0891b2", purple:"#7c3aed",
+  amber:"#d97706", amberDim:"rgba(217,119,6,.08)", red:"#dc2626", green:"#059669", blue:"#0891b2", purple:"#7c3aed",
   font:"'DM Mono','JetBrains Mono',monospace",
   sans:"system-ui,-apple-system,sans-serif",
 };
@@ -152,7 +152,7 @@ ${patient.parameters ? Object.entries(patient.parameters).map(([k,v]) => `  ${k.
 ${clinicalNotes || '(none)'}
 
 ─── CLINICAL FLAGS ───
-${(patient.clinicalFlags || []).map((f,i) => `  ${i+1}. ${f}`).join('\n') || '  None'}
+${(patient.clinicalFlags || []).map((f,i) => `  ${i+1}. [${f.level || 'note'}] ${f.text || f}`).join('\n') || '  None'}
 
 ─── INCLUDED FILES ───
 ${patient.files?.map(f => `  • ${f.name} [${f.slot}]`).join('\n') || '  None'}
@@ -276,7 +276,7 @@ Restora`;
     <div style={{ flex:1, overflow:"auto", background:C.bg, color:C.ink, fontFamily:C.sans }}>
       {/* Header */}
       <div style={{ padding:"20px 24px", borderBottom:`1px solid ${C.border}` }}>
-        <div style={{ fontSize:22, fontWeight:800, letterSpacing:"-.02em" }}>Export Hub</div>
+        <div style={{ fontSize:28, fontWeight:700, letterSpacing:"-.02em" }}>Export</div>
         <div style={{ fontSize:13, color:C.muted, marginTop:3 }}>
           {patient ? `${patient.name} · ${patient.caseType || 'Case'}` : "No patient selected"}
         </div>
@@ -352,7 +352,12 @@ Restora`;
               <div style={{ marginTop:16, padding:12, borderRadius:8, background:C.amberDim, border:`1px solid ${C.amber}40`, fontSize:12 }}>
                 <div style={{ fontSize:10, color:C.amber, fontFamily:C.font, letterSpacing:1.5, fontWeight:700, marginBottom:6 }}>⚠ CLINICAL FLAGS ({patient.clinicalFlags.length})</div>
                 <ul style={{ margin:0, paddingLeft:18, color:C.ink, lineHeight:1.7 }}>
-                  {patient.clinicalFlags.map((f,i) => <li key={i}>{f}</li>)}
+                  {patient.clinicalFlags.map((f,i) => (
+                    <li key={i}>
+                      <span style={{ color: f.level === 'critical' ? C.red : f.level === 'warning' ? C.amber : C.muted, fontWeight:700, marginRight:6, textTransform:'uppercase', fontSize:10, letterSpacing:1, fontFamily:C.font }}>{f.level || 'note'}</span>
+                      {f.text || String(f)}
+                    </li>
+                  ))}
                 </ul>
               </div>
             )}
