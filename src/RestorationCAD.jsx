@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import * as THREE from "three";
 import { PATIENTS } from "./patient-cases.js";
+import { loadMeshFromFile } from "./mesh-loaders.js";
 
 const C = {
   bg:"#0d1b2e", surface:"#132338", surface2:"#1a2f48", surface3:"#213858",
@@ -1075,7 +1076,7 @@ export default function RestorationCAD({ navigate, activePatient }) {
                 scanner output. Multiple files accepted; each becomes a mesh in the scene. */}
             <label style={{ padding:"9px 14px", borderRadius:10, background:"transparent", color:C.ink, border:`1px solid ${C.border}`, fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:C.sans, letterSpacing:.1, display:"inline-flex", alignItems:"center", gap:6 }}>
               Import scan
-              <input type="file" multiple accept=".stl,.obj,.ply,.glb,.gltf,model/stl,model/obj" style={{ display:"none" }}
+              <input type="file" multiple accept=".stl,.obj,.ply,.glb,.gltf,model/stl,model/obj,model/gltf-binary,model/gltf+json" style={{ display:"none" }}
                 onChange={async (e) => {
                   const files = Array.from(e.target.files || []);
                   if (!files.length) return;
@@ -1083,16 +1084,15 @@ export default function RestorationCAD({ navigate, activePatient }) {
                   const imported = [];
                   for (const f of files) {
                     try {
-                      const buf = await f.arrayBuffer();
                       const ext = (f.name.split('.').pop() || '').toLowerCase();
-                      // STL parses natively; other formats will need loaders later.
-                      // Flag non-STL for now with a clear error in the console.
-                      if (ext !== 'stl') {
-                        console.warn(`Format .${ext} not yet supported in dev import. Converting to STL in a CAD app is currently required. File: ${f.name}`);
-                        continue;
+                      let mesh;
+                      if (ext === 'stl') {
+                        const buf = await f.arrayBuffer();
+                        mesh = parseSTL(buf);
+                      } else {
+                        mesh = await loadMeshFromFile(f);
                       }
-                      const { positions, normals, triCount } = parseSTL(buf);
-                      // Guess slot from filename (upper/lower/bite); fall back to custom
+                      const { positions, normals, triCount } = mesh;
                       const lower = f.name.toLowerCase();
                       const slot = lower.includes('upper') || lower.includes('max') ? 'upper'
                                  : lower.includes('lower') || lower.includes('mand') ? 'lower'
@@ -1102,7 +1102,7 @@ export default function RestorationCAD({ navigate, activePatient }) {
                       imported.push({
                         id: `user-${Date.now()}-${f.name}`,
                         name: f.name, slot,
-                        label: f.name.replace(/\.stl$/i, '').replace(/_/g, ' '),
+                        label: f.name.replace(/\.(stl|obj|ply|glb|gltf)$/i, '').replace(/_/g, ' '),
                         positions, normals, triCount,
                         color: FILE_COLORS[slot] ?? 0xe8d8c4,
                         highlightColor: 0x0abab5,
@@ -1110,11 +1110,12 @@ export default function RestorationCAD({ navigate, activePatient }) {
                       });
                     } catch (err) {
                       console.error('Failed to import', f.name, err);
+                      setError(`${f.name}: ${err.message}`);
                     }
                   }
                   if (imported.length > 0) setMeshes(ms => [...ms, ...imported]);
                   setLoading(false);
-                  e.target.value = ''; // allow re-importing the same file
+                  e.target.value = '';
                 }} />
             </label>
             <button onClick={exportDesign} disabled={meshes.length===0} style={{ padding:"9px 14px", borderRadius:10, background:"transparent", color:meshes.length?C.ink:C.muted, border:`1px solid ${C.border}`, fontSize:13, fontWeight:500, cursor:meshes.length?"pointer":"not-allowed", fontFamily:C.sans, letterSpacing:.1 }}>Export STL</button>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { PATIENTS } from "./patient-cases.js";
+import { loadImageFromFile } from "./image-loaders.js";
 
 const C = {
   bg:"#0d1b2e", surface:"#132338", surface2:"#1a2f48", surface3:"#213858",
@@ -148,17 +149,19 @@ export default function SmileSimulation({ navigate, activePatient }) {
 
   }, [loaded, shadeIdx, whiten, lengthAdj, opacity, region, imgDims]);
 
-  function handleFile(f) {
+  async function handleFile(f) {
     if (!f) return;
-    const reader = new FileReader();
-    reader.onload = e => {
-      setImage(e.target.result);
-      setImageName(f.name);
+    try {
+      const loaded = await loadImageFromFile(f);
+      setImage(loaded.dataURL);
+      setImageName(loaded.originalName);
       setLoaded(false);
       setRegion(null);
       setAiNotes(null);
-    };
-    reader.readAsDataURL(f);
+    } catch (err) {
+      console.error('Photo upload failed', err);
+      alert(`Could not load ${f.name}: ${err.message}`);
+    }
   }
 
   // Canvas mouse: click-drag to define tooth region

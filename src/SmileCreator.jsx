@@ -12,6 +12,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import TOOTH_SILHOUETTES from "./tooth-silhouettes.json";
 import AutoPlaceSmileButton from "./AutoPlaceSmileButton";
+import { loadImageFromFile } from "./image-loaders.js";
 
 const C = {
   bg:"#0d1b2e", surface:"#132338", surface2:"#1a2f48", surface3:"#213858",
@@ -1895,12 +1896,18 @@ export default function SmileCreator({ navigate, activePatient }) {
                 }}>
                   Upload retracted smile photo
                   <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/tiff,.jpg,.jpeg,.png,.webp,.heic,.heif,.tif,.tiff" style={{ display: "none" }}
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       const f = e.target.files?.[0];
                       if (!f) return;
-                      const reader = new FileReader();
-                      reader.onload = () => setPhotoUrl(reader.result);
-                      reader.readAsDataURL(f);
+                      try {
+                        // Handles HEIC (iPhone clinic photos) transparently —
+                        // transcodes to JPEG so Chrome / Firefox can render.
+                        const loaded = await loadImageFromFile(f);
+                        setPhotoUrl(loaded.dataURL);
+                      } catch (err) {
+                        console.error('Photo upload failed', err);
+                        alert(`Could not load ${f.name}: ${err.message}`);
+                      }
                     }}/>
                 </label>
               </div>
